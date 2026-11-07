@@ -1,0 +1,52 @@
+{
+  "name": "@vercel-labs/rex-cloud",
+  "version": "0.1.0-prototype.3",
+  "type": "module",
+  "description": "Cloud terminals for Rex on Vercel Sandbox",
+  "bin": {
+    "rex-cloud": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "assets",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:package": "node test/package.mjs",
+    "test:login-command": "npm run build && node test/login-command.mjs",
+    "check": "npm run typecheck && npm test"
+  },
+  "overrides": {
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.0",
+    "@types/ws": "8.18.1",
+    "@vercel/cli-config": "0.3.5",
+    "@vercel/oidc": "4.0.5",
+    "@vercel/sandbox": "3.9.1",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "ws": "8.22.1"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vercel-labs/rex-cloud.git"
+  },
+  "homepage": "https://github.com/vercel-labs/rex-cloud#readme",
+  "bugs": {
+    "url": "https://github.com/vercel-labs/rex-cloud/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "preview"
+  }
+}
