@@ -30,7 +30,7 @@ test('extend adds time in place and reports only the re-read deadline on the sam
   const c = computer();
   const result = await run(c, { by: '2h' });
   assert.deepEqual(c.state.extended, [2 * HOUR]);
-  assert.equal(result.added, 2 * HOUR); assert.equal(result.confirmed, true);
+  assert.equal(result.added, 2 * HOUR); assert.equal(result.observed, 2 * HOUR);
   assert.equal(result.expiresAfter - result.expiresBefore, 2 * HOUR);
   assert.equal(result.after.expiresAt.getTime(), result.expiresAfter);
   assert.equal(c.state.gets, 2, 'reads before and after');
@@ -43,7 +43,6 @@ test('a stopped or transitioning computer is never resumed, created or extended'
   }
   const c = computer({ status: 'stopping' });
   await assert.rejects(run(c, { by: '1h' }), /stopping.*retry/);
-  await assert.rejects(run(computer({ status: 'stopped' }), { by: '1h', ...{} }), e => !/resume=true/.test(e.message));
 });
 test('plan limits are checked before calling Vercel and explained with the remaining headroom', async () => {
   const c = computer({ timeout: 23 * HOUR });
@@ -72,16 +71,41 @@ test('explicit Vercel rejections are explained without retrying; auth errors sur
 test('ambiguous failures are resolved by re-reading the deadline, so time is never added twice', async () => {
   const applied = computer({ fail: { error: new Error('socket hang up'), applies: true } });
   const result = await run(applied, { by: '1h' });
-  assert.equal(result.confirmed, true); assert.equal(applied.state.extended.length, 1, 'no blind retry');
+  assert.equal(result.observed, HOUR); assert.equal(applied.state.extended.length, 1, 'no blind retry');
   const lost = computer({ fail: { error: new Error('socket hang up'), applies: false } });
   await assert.rejects(run(lost, { by: '1h' }), /was not extended; the request did not complete[^]*unchanged/);
   assert.equal(lost.state.extended.length, 1);
+});
+test('a computer that stops mid-call is reported as stopped, not as a declined extension', async () => {
+  for (const status of [410, 422, 404]) {
+    const c = computer({ fail: { error: error(status, 'sandbox_stopped') }, afterGet: (state, n) => { if (n === 2) state.status = 'stopped'; } });
+    await assert.rejects(run(c, { by: '1h' }), /changed while extending \(now stopped\)/);
+    assert.equal(c.state.gets, 2, 'the re-read decides');
+  }
+  const concurrent = computer({ afterGet: (state, n) => { if (n === 2) state.timeout += HOUR; } });
+  const result = await run(concurrent, { by: '1h' });
+  assert.equal(result.added, HOUR); assert.equal(result.observed, 2 * HOUR, 'reports what actually moved');
+  await assert.rejects(run(computer({ status: 'stopped' }), { by: '1h', target: "dev --state-dir '/x'" }), /start dev --state-dir '\/x'\./, 'hints carry the full command target');
 });
 test('a session that changes underneath extend is reported instead of being trusted', async () => {
   const replaced = computer({ afterGet: (state, n) => { if (n === 2) state.sessionId = 'sbx_other'; } });
   await assert.rejects(run(replaced, { by: '1h' }), /changed while extending/);
   const stopped = computer({ afterGet: (state, n) => { if (n === 2) state.status = 'stopped'; } });
   await assert.rejects(run(stopped, { by: '1h' }), /changed while extending \(now stopped\)/);
+});
+test('prompt rejects with Cancelled when input closes and still returns normal answers', async () => {
+  const { Prompt } = await import('../dist/prompt.js');
+  const { PassThrough } = await import('node:stream');
+  const input = new PassThrough(), output = new PassThrough();
+  const prompt = new Prompt(input, output);
+  const first = prompt.ask('How much? ');
+  input.write('2h\n');
+  assert.equal(await first, '2h');
+  const second = prompt.ask('Again? ');
+  input.end();
+  await assert.rejects(second, /Cancelled/);
+  await assert.rejects(prompt.ask('Closed? '), /Cancelled/);
+  prompt.close();
 });
 test('durations and stop times read naturally and include the timezone', () => {
   assert.equal(label(2 * HOUR), '2h'); assert.equal(label(90 * 60000), '1h 30m'); assert.equal(label(45 * 60000), '45m');

@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { checkFile } from './state.js';
 
 const exec = promisify(execFile);
 export interface RexApp { path: string; build: number }
@@ -57,7 +58,10 @@ export type HostRegistration = 'added' | 'updated' | 'current' | 'conflict' | 'u
  * Register the computer as a Rex host named after it, so it appears in Rex by label instead of a pasted socket path.
  * Only hosts whose endpoint is a rex-cloud socket are ever changed. Failures never block the connection.
  */
-export async function registerHost(name: string, socket: string, run: (args: string[]) => Promise<string> = async args => (await exec('rex', ['--autostart=false', '--timeout', '5s', ...args], { timeout: 10000, maxBuffer: 1024 * 1024 })).stdout): Promise<HostRegistration> {
+export async function registerHost(name: string, socket: string,
+  run: (args: string[]) => Promise<string> = async args => (await exec('rex', ['--autostart=false', '--timeout', '5s', ...args], { timeout: 10000, maxBuffer: 1024 * 1024 })).stdout,
+  live: (path: string) => Promise<boolean> = path => checkFile(path, true).catch(() => true),
+): Promise<HostRegistration> {
   const endpoint = `unix://${socket}`;
   let hosts: HostEntry[];
   try {
@@ -68,9 +72,12 @@ export async function registerHost(name: string, socket: string, run: (args: str
   const existing = hosts.find(h => h.host?.label?.toLowerCase() === name.toLowerCase());
   if (existing) {
     const endpoints = existing.host.endpoints ?? [];
-    if (endpoints.length === 1 && endpoints[0] === endpoint) return 'current';
+    if (endpoints.includes(endpoint)) return 'current';
+    // Only replace a stale rex-cloud socket. A socket that still exists belongs to another live bridge with the same
+    // name (another account, --shared, or --state-dir), so it is left alone rather than silently repointed.
     if (!endpoints.every(e => CLOUD_SOCKET.test(e))) return 'conflict';
-    try { await run(['hosts', 'edit', name, '--endpoint', endpoint]); return 'updated'; } catch { return 'unsupported'; }
+    for (const e of endpoints) if (await live(e.slice('unix://'.length))) return 'conflict';
+    try { await run(['hosts', 'edit', existing.host.label, '--endpoint', endpoint]); return 'updated'; } catch { return 'unsupported'; }
   }
   try { await run(['hosts', 'add', name, endpoint, '--icon', 'cloud']); return 'added'; } catch { return 'unsupported'; }
 }

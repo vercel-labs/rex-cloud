@@ -78,8 +78,12 @@ test('host registration adds or updates only rex-cloud hosts and never blocks on
   assert.equal(await registerHost('remote', socket, rex([])), 'added');
   assert.match(calls.at(-1), /^hosts add remote unix:\/\/\/tmp\/rex-cloud-501-[a-f0-9]+\/[a-f0-9]+\/sandbox-remote\.sock --icon cloud$/);
   assert.equal(await registerHost('Remote', socket, rex([{ host: { label: 'remote', endpoints: [`unix://${socket}`] }, from: 'home', held: false }])), 'current');
-  assert.equal(await registerHost('remote', socket, rex([{ host: { label: 'remote', endpoints: ['unix:///tmp/rex-cloud-501-0123456789abcdef/0000000000000000/sandbox-remote.sock'] }, from: 'home', held: false }])), 'updated');
-  assert.match(calls.at(-1), /^hosts edit remote --endpoint unix:\/\/\/tmp\/rex-cloud-501-/);
+  const stale = 'unix:///tmp/rex-cloud-501-0123456789abcdef/0000000000000000/sandbox-remote.sock';
+  assert.equal(await registerHost('remote', socket, rex([{ host: { label: 'Remote', endpoints: [stale] }, from: 'home', held: false }]), async () => false), 'updated');
+  assert.match(calls.at(-1), /^hosts edit Remote --endpoint unix:\/\/\/tmp\/rex-cloud-501-/, 'edits by the existing label');
+  assert.equal(await registerHost('remote', socket, rex([{ host: { label: 'remote', endpoints: [stale] }, from: 'home', held: false }]), async () => true), 'conflict', 'a live socket of another bridge is never repointed');
+  assert.equal(await registerHost('remote', socket, rex([{ host: { label: 'remote', endpoints: [stale, `unix://${socket}`] }, from: 'home', held: false }])), 'current');
+  assert.equal(await registerHost('remote', socket, async args => { if (args[1] === '--json') return JSON.stringify({ hosts: [{ host: { label: 'remote', endpoints: [stale] }, from: 'home', held: true }] }); throw new Error('home is away'); }, async () => false), 'unsupported');
   assert.equal(await registerHost('remote', socket, rex([{ host: { label: 'remote', endpoints: ['ssh://studio'] }, from: 'home', held: false }])), 'conflict');
   assert.equal(await registerHost('remote', socket, async () => { throw new Error('unknown command "hosts"'); }), 'unsupported');
   assert.equal(await registerHost('remote', socket, async () => 'not json'), 'unsupported');

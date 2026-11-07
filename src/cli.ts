@@ -11,7 +11,7 @@ import { installedRex, openDesktop, attached, stopTime, rexCompatibility, regist
 import { currentUser, type Identity } from './identity.js';
 import { chooseLifetime } from './lifetime.js';
 import { extendComputer } from './extend.js';
-import { createInterface } from 'node:readline/promises';
+import { Prompt } from './prompt.js';
 import { duration, locations, privateDir, readJSON, stateRoot, validateName, validateScope, withLock, writeJSON, type Scope, type Workspace } from './state.js';
 
 const exec = promisify(execFile);
@@ -50,7 +50,7 @@ Vercel login does not sign into coding agents or Git services.
 let interruptedComputer: string | undefined;
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => {
   warn(interruptedComputer
-    ? `\nInterrupted. ${interruptedComputer} may still be running. Check rex-cloud status ${interruptedComputer}, or stop it with rex-cloud stop ${interruptedComputer}.`
+    ? `\nInterrupted. ${interruptedComputer} may still be running, possibly with a changed stop time. Check rex-cloud status ${interruptedComputer}, or stop it with rex-cloud stop ${interruptedComputer}.`
     : '\nCancelled.');
   process.exit(signal === 'SIGINT' ? 130 : 143);
 });
@@ -65,6 +65,7 @@ async function main() {
   if (values.help || !command) { print(HELP); return; }
   if (!['setup', 'login', 'start', 'up', 'open', 'status', 'extend', 'stop', 'disconnect'].includes(command)) throw new Error(`Unknown command: ${command}. Run rex-cloud --help.`);
   if (values.by && command !== 'extend') throw new Error('--by is available with extend, for example rex-cloud extend remote --by 2h.');
+  if (values.by) try { duration(values.by); } catch { throw new Error('Give --by as minutes or hours, for example --by 30m or --by 2h (up to 24h).'); }
   if (positionals.length > 2 || (['setup', 'login'].includes(command) && positionals.length > 1)) throw new Error('Unexpected extra arguments. Run rex-cloud --help.');
   const starting = ['start', 'up', 'open'].includes(command);
   if (values.image && !['start', 'up'].includes(command)) throw new Error('--image is available with start. Use a new computer name to change images.');
@@ -115,18 +116,18 @@ async function main() {
       return;
     }
     if (command === 'extend') {
-      let rl: ReturnType<typeof createInterface> | undefined;
+      const prompt = new Prompt();
       try {
         const result = await extendComputer(scope, name, {
-          by: values.by, interactive, log,
-          ask: async room => {
-            rl ??= createInterface({ input: process.stdin, output: process.stderr });
-            return rl.question(`Add how much time? (up to ${label(room)}; m = minutes, h = hours): `);
-          },
+          by: values.by, interactive, log, target,
+          ask: room => prompt.ask(`Add how much time? (up to ${label(room)}; m = minutes, h = hours): `),
+          onRequest: () => { interruptedComputer = target; },
         });
-        const data = { ...summary(result.after, name), expiresAt: new Date(result.expiresAfter).toISOString(), added: result.added, previousExpiresAt: new Date(result.expiresBefore).toISOString() };
-        print(values.json ? JSON.stringify(data) : `Added ${label(result.added)} to ${name}. Nothing was interrupted.\nStops: ${stopTime(data.expiresAt)}`);
-      } finally { rl?.close(); }
+        interruptedComputer = undefined;
+        const data = { ...summary(result.after, name), expiresAt: new Date(result.expiresAfter).toISOString(), added: result.added, observed: result.observed, previousExpiresAt: new Date(result.expiresBefore).toISOString() };
+        const moved = result.observed > result.added + 1000 ? `The stop time moved by ${label(result.observed)}; another connection extended ${name} as well.` : `Added ${label(result.added)} to ${name}.`;
+        print(values.json ? JSON.stringify(data) : `${moved} Nothing was interrupted.\nStops: ${stopTime(data.expiresAt)}`);
+      } finally { prompt.close(); }
       return;
     }
     if (command === 'stop') {

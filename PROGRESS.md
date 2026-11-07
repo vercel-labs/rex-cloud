@@ -38,3 +38,12 @@ Branch: `feat/multi-client-extend` (local), base `a4da2ca` = tag `v0.1.0-prototy
 - Flaky pre-existing test noticed once: `detached helper … recovers from a crash` (timing; passes on rerun).
 - Still to do: API behaviour when exceeding the 24h cap (probe via SDK on agenttest at the end), cleanup
   (stop+delete agenttest, agenttest2; remove helpers; `vercel logout`? — see final notes), publish branch + draft PR.
+
+## 2026-11-07 18:15 UTC — Published
+- Branch `feat/multi-client-extend` published as ONE GitHub-signed commit via GraphQL `createCommitOnBranch`
+  (the repo requires signed commits on every branch; Git Data API commits are unsigned and were rejected —
+  dangling unsigned object `c5c8457…` is harmless). Local history (`ace1eb0`…`3fe5a01`) is the detailed record.
+- Draft PR opened against `main`. Not merged; no release.
+- agenttest2 deleted (`not_found` confirmed). agenttest still running (24h cap test) for the connectivity monitor;
+  delete after 20:35 UTC with `node scripts/live-delete.mjs agenttest /tmp/claude-1000/rc-a` (+ disconnect rc-b).
+- Remaining: monitor results → TESTING.md L5; final publish of docs; cleanup; final report.
