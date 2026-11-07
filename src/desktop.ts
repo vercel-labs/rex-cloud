@@ -50,9 +50,37 @@ export async function attached(socket: string): Promise<boolean | undefined> {
     return data.clients.some((c: { info?: { kind?: string }; connection_state?: string }) => c.info?.kind === 'app' && c.connection_state === 'connected');
   } catch { return; }
 }
+export const CLOUD_SOCKET = /^unix:\/\/\/tmp\/rex-cloud-\d+-[a-f0-9]{16}\//;
+export interface HostEntry { host: { label: string; endpoints: string[]; icon?: string }; from: string; held: boolean }
+export type HostRegistration = 'added' | 'updated' | 'current' | 'conflict' | 'unsupported';
+/**
+ * Register the computer as a Rex host named after it, so it appears in Rex by label instead of a pasted socket path.
+ * Only hosts whose endpoint is a rex-cloud socket are ever changed. Failures never block the connection.
+ */
+export async function registerHost(name: string, socket: string, run: (args: string[]) => Promise<string> = async args => (await exec('rex', ['--autostart=false', '--timeout', '5s', ...args], { timeout: 10000, maxBuffer: 1024 * 1024 })).stdout): Promise<HostRegistration> {
+  const endpoint = `unix://${socket}`;
+  let hosts: HostEntry[];
+  try {
+    const data = JSON.parse(await run(['hosts', '--json'])) as { hosts?: HostEntry[] };
+    if (!Array.isArray(data.hosts)) return 'unsupported';
+    hosts = data.hosts;
+  } catch { return 'unsupported'; }
+  const existing = hosts.find(h => h.host?.label?.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    const endpoints = existing.host.endpoints ?? [];
+    if (endpoints.length === 1 && endpoints[0] === endpoint) return 'current';
+    if (!endpoints.every(e => CLOUD_SOCKET.test(e))) return 'conflict';
+    try { await run(['hosts', 'edit', name, '--endpoint', endpoint]); return 'updated'; } catch { return 'unsupported'; }
+  }
+  try { await run(['hosts', 'add', name, endpoint, '--icon', 'cloud']); return 'added'; } catch { return 'unsupported'; }
+}
+export function label(ms: number): string {
+  const minutes = Math.round(ms / 60000), hours = Math.floor(minutes / 60), rest = minutes % 60;
+  return hours && rest ? `${hours}h ${rest}m` : hours ? `${hours}h` : `${rest}m`;
+}
 export function stopTime(iso?: string, now = Date.now()): string {
   if (!iso) return 'not running';
   const date = new Date(iso);
   if (!Number.isFinite(date.getTime())) return 'unknown; run rex-cloud status';
-  return `${date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })} (${Math.max(0, Math.ceil((date.getTime() - now) / 60000))} min remaining)`;
+  return `${date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })} (${label(Math.max(0, date.getTime() - now))} remaining)`;
 }

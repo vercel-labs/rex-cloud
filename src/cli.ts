@@ -7,9 +7,11 @@ import { bootstrap, ensureComputer, findComputer, friendlyError, summary } from 
 import { control, disconnect, ensureHelper, saveAccount } from './helper.js';
 import { commandHint } from './commands.js';
 import { configure } from './setup.js';
-import { installedRex, openDesktop, attached, stopTime, rexCompatibility } from './desktop.js';
+import { installedRex, openDesktop, attached, stopTime, rexCompatibility, registerHost, label } from './desktop.js';
 import { currentUser, type Identity } from './identity.js';
 import { chooseLifetime } from './lifetime.js';
+import { extendComputer } from './extend.js';
+import { createInterface } from 'node:readline/promises';
 import { duration, locations, privateDir, readJSON, stateRoot, validateName, validateScope, withLock, writeJSON, type Scope, type Workspace } from './state.js';
 
 const exec = promisify(execFile);
@@ -19,6 +21,7 @@ const HELP = `rex-cloud · cloud terminals for Rex (prototype)
 
   rex-cloud start [name] [--timeout 45m] [--image VCR_REFERENCE] [--shared]
   rex-cloud status [name]
+  rex-cloud extend [name] [--by 2h]
   rex-cloud stop [name]
   rex-cloud disconnect [name]
   rex-cloud setup [--team team_… --project prj_…]
@@ -38,6 +41,8 @@ Options: --team, --project, --state-dir, --no-open, --json, --help
 --no-open keeps the Mac app in the background. --json also disables app opening.
 Choose a duration on first use. Hobby allows 45m, paid plans up to 24h.
 Your duration choice is saved. --timeout overrides it for future starts.
+Reconnecting keeps the current stop time. extend adds time to a running computer in place;
+terminals, agents and connections continue. Pro and Enterprise allow 24h per run.
 stop ends running processes and saves disk. disconnect only closes this Mac's bridge.
 Vercel login does not sign into coding agents or Git services.
 `;
@@ -54,11 +59,12 @@ async function main() {
   process.umask(0o077);
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     help: { type: 'boolean', short: 'h' }, json: { type: 'boolean' }, team: { type: 'string' }, project: { type: 'string' },
-    'state-dir': { type: 'string' }, image: { type: 'string' }, timeout: { type: 'string' }, 'no-open': { type: 'boolean' }, shared: { type: 'boolean' },
+    'state-dir': { type: 'string' }, image: { type: 'string' }, timeout: { type: 'string' }, 'no-open': { type: 'boolean' }, shared: { type: 'boolean' }, by: { type: 'string' },
   } });
   const command = positionals[0];
   if (values.help || !command) { print(HELP); return; }
-  if (!['setup', 'login', 'start', 'up', 'open', 'status', 'stop', 'disconnect'].includes(command)) throw new Error(`Unknown command: ${command}. Run rex-cloud --help.`);
+  if (!['setup', 'login', 'start', 'up', 'open', 'status', 'extend', 'stop', 'disconnect'].includes(command)) throw new Error(`Unknown command: ${command}. Run rex-cloud --help.`);
+  if (values.by && command !== 'extend') throw new Error('--by is available with extend, for example rex-cloud extend remote --by 2h.');
   if (positionals.length > 2 || (['setup', 'login'].includes(command) && positionals.length > 1)) throw new Error('Unexpected extra arguments. Run rex-cloud --help.');
   const starting = ['start', 'up', 'open'].includes(command);
   if (values.image && !['start', 'up'].includes(command)) throw new Error('--image is available with start. Use a new computer name to change images.');
@@ -105,7 +111,22 @@ async function main() {
       const s = await findComputer(scope, name), helper = await control(paths.control);
       const rexAttached = s.status === 'running' && helper ? await attached(paths.socket) : false;
       const data = { ...summary(s, name), socket: paths.socket, localConnected: !!helper, rexAttached, connectionError: helper?.lastError };
-      print(values.json ? JSON.stringify(data) : `${name}: ${data.status}\nStops: ${stopTime(data.expiresAt)}\nThis Mac: ${helper ? 'connection helper running' : 'disconnected'}\nRex: ${rexAttached === true ? 'connected to the cloud computer' : rexAttached === false ? 'not connected' : 'connection could not be checked'}${helper?.lastError ? `\nConnection error: ${friendlyError(new Error(helper.lastError))}` : ''}\n${s.status === 'running' ? `Stop compute: rex-cloud stop ${target}` : `Resume: rex-cloud start ${target}`}`);
+      print(values.json ? JSON.stringify(data) : `${name}: ${data.status}\nStops: ${stopTime(data.expiresAt)}\nThis Mac: ${helper ? 'connection helper running' : 'disconnected'}\nRex: ${rexAttached === true ? 'connected to the cloud computer' : rexAttached === false ? 'not connected' : 'connection could not be checked'}${helper?.lastError ? `\nConnection error: ${friendlyError(new Error(helper.lastError))}` : ''}\n${s.status === 'running' ? `Add time: rex-cloud extend ${target}\nStop compute: rex-cloud stop ${target}` : `Resume: rex-cloud start ${target}`}`);
+      return;
+    }
+    if (command === 'extend') {
+      let rl: ReturnType<typeof createInterface> | undefined;
+      try {
+        const result = await extendComputer(scope, name, {
+          by: values.by, interactive, log,
+          ask: async room => {
+            rl ??= createInterface({ input: process.stdin, output: process.stderr });
+            return rl.question(`Add how much time? (up to ${label(room)}; m = minutes, h = hours): `);
+          },
+        });
+        const data = { ...summary(result.after, name), expiresAt: new Date(result.expiresAfter).toISOString(), added: result.added, previousExpiresAt: new Date(result.expiresBefore).toISOString() };
+        print(values.json ? JSON.stringify(data) : `Added ${label(result.added)} to ${name}. Nothing was interrupted.\nStops: ${stopTime(data.expiresAt)}`);
+      } finally { rl?.close(); }
       return;
     }
     if (command === 'stop') {
@@ -146,20 +167,23 @@ async function main() {
       await ensureHelper(root, work);
       await exec('rex', ['--autostart=false', '--timeout', '20s', '-S', paths.socket, 'server', 'status', '--json'], { timeout: 25000, maxBuffer: 1024 * 1024 });
       const data = { ...summary(s, name), ...remote, socket: paths.socket, created };
-      if (values.json) { print(JSON.stringify(data)); return; }
+      if (values.json) { print(JSON.stringify({ ...data, host: await registerHost(name, paths.socket) })); return; }
       if (!values['no-open']) {
         try {
           const foreground = await openDesktop(app);
           if (!foreground) log(`Open ${app.path} from Applications.`);
         } catch { log(`Could not bring Rex forward. Open ${app.path} from Applications.`); }
       }
+      // Register after the app is up so its local server answers `rex hosts`; failures only change the printed guidance.
+      const host = await registerHost(name, paths.socket);
       const connected = await attached(paths.socket);
       print(`\n${name} ${resumed ? 'resumed' : 'is ready'}.`);
       if (resumed) print('Files restored. Terminals start as fresh shells.');
       if (connected) print(`Select ${name} in Rex to continue.`);
-      else print(`Connect once on this Mac:\n  1. In ${app.path}, choose Add Remote Host.\n  2. Paste this path and select the Connect to… result:\n\n${paths.socket}\n\n  3. Select ${name}, then its bash terminal.\nIf Rex rejects the path, check that you opened the Applications copy.`);
+      else if (['added', 'updated', 'current'].includes(host)) print(`In Rex, select the ${name} host in the sidebar, then its bash terminal.\nIf it is not listed, choose Add Remote Host and paste:\n\n${paths.socket}\n`);
+      else print(`Connect once on this Mac:\n  1. In ${app.path}, choose Add Remote Host.\n  2. Paste this path and select the Connect to… result:\n\n${paths.socket}\n\n  3. Select ${name}, then its bash terminal.${host === 'conflict' ? `\nA different host is already named ${name} in Rex, so it was left unchanged.` : '\nIf Rex rejects the path, check that you opened the Applications copy.'}`);
       print(`Stops: ${stopTime(data.expiresAt)}`);
-      if (created || !connected) print(`\nFrom your Mac:\n  Reconnect: rex-cloud start ${target}\n  Stop: rex-cloud stop ${target}`);
+      if (created || !connected) print(`\nFrom your Mac:\n  Reconnect: rex-cloud start ${target}\n  Add time: rex-cloud extend ${target}\n  Stop: rex-cloud stop ${target}`);
     } catch (e) {
       throw new Error(`Setup did not complete. ${name} may still be running until ${s.expiresAt?.toISOString() ?? 'its timeout'}. Run rex-cloud stop ${target} to stop compute, or open to retry. ${friendlyError(e)}`);
     }

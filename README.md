@@ -22,7 +22,7 @@ rex-cloud start remote
 
 The launcher reuses your Vercel login or opens browser sign-in. It uses your linked project or current Vercel CLI team when available. Otherwise, it asks you to choose a team and finds or creates a `rex-cloud` project to track Sandbox usage. It asks how long the computer should run, then starts it and opens Rex.
 
-Connect once on this Mac:
+The launcher registers the computer as a Rex host named **remote** (`rex hosts add`). Select **remote** in Rex's sidebar, then its terminal. If the host is not listed, connect once by hand:
 
 1. Choose **Add Remote Host** in Rex.
 2. Paste the socket path printed by the launcher and select **Connect to…**.
@@ -81,6 +81,17 @@ rex-cloud stop remote
 
 `stop` ends running commands and saves the disk. `disconnect` only closes this Mac's connection. Neither `status` nor background connection attempts wake a stopped computer. Running computers and saved snapshots incur [Vercel Sandbox usage](https://vercel.com/docs/sandbox/pricing).
 
+### Add time to a running computer
+
+Before the stop time, add time in place. Terminals, agents and connections continue uninterrupted:
+
+```sh
+rex-cloud extend remote          # shows the stop time and asks how much to add
+rex-cloud extend remote --by 2h  # adds two hours without a prompt
+```
+
+`extend` uses Sandbox's timeout extension on the running session. It never creates, resumes or restarts anything: for a stopped computer it points you to `rex-cloud start` instead. The total run may not exceed your plan limit (45 minutes on Hobby, 24 hours on Pro and Enterprise); the command tells you how much can still be added. Success is reported only after Vercel confirms the new stop time, which `status` also shows. If the request fails ambiguously, `extend` re-reads the stop time instead of retrying, so time is never added twice.
+
 ## Use an existing Vercel project
 
 First setup reuses your existing login. For project selection, explicit flags and saved Rex cloud configuration take precedence, followed by paired `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`, a project link, and your current Vercel CLI team.
@@ -110,7 +121,9 @@ Custom images need Linux amd64, glibc, Python 3, CA certificates, and Rex's runt
 
 ## Connect from another Mac or share deliberately
 
-Install the preview on the other Mac, sign into the same Vercel user, select the same team and project, and run `rex-cloud start remote`. Add that Mac's printed host path once. Both Macs connect to the same cloud Rex server through Vercel's authenticated connection. Tailscale is not required. Physical two-Mac sleep/wake testing is still pending.
+Install the preview on the other Mac, sign into the same Vercel user, select the same team and project, and run `rex-cloud start remote`. The command reconnects to the running computer without changing its stop time, starts that Mac's own private bridge, and registers the **remote** host in that Mac's Rex. Both Macs are clients of the same cloud Rex server through Vercel's authenticated connection: they see the same sessions, windows, splits, layout and live terminal output, and either can type into any terminal. Closing one laptop only drops its client; the cloud processes keep running and the other Mac keeps controlling them. Tailscale is not required.
+
+What is shared is the server's state: sessions, windows (tabs), block splits and layout, zoom, focus and scrollback. What stays per Mac is which session is selected in the sidebar and the window size of Rex itself; a terminal's size follows the client that owns it. Verified with two Linux clients over two bridges; physical two-Mac sleep/wake testing is still pending.
 
 Computers are personal by default. To share a computer with other members who have project access, use `--shared` on every command:
 
@@ -143,7 +156,7 @@ The Linux Rex executable is downloaded from Superlogical's release server and ch
 
 ## Preview limits
 
-This is a prototype for testing. Automatic host registration, startup at Mac login, and migration of a running local Mac session are not implemented. Fresh-account signup through the first cloud terminal, real credential renewal, physical two-Mac sleep/wake, and a two-hour connected session still need validation. Confirmation from Superlogical for the automated server-install flow is pending.
+This is a prototype for testing. Startup at Mac login and migration of a running local Mac session are not implemented. Host registration uses `rex hosts add`; whether the Mac sidebar lists such hosts immediately still needs confirmation on a Mac, so the socket path is always printed as a fallback. Fresh-account signup through the first cloud terminal, real credential renewal and physical two-Mac sleep/wake still need validation. Confirmation from Superlogical for the automated server-install flow is pending.
 
 ## Develop locally
 
@@ -156,7 +169,7 @@ npm run test:package
 npm pack
 ```
 
-Tests cover authentication preservation, lifecycle decisions, private sockets, byte transport, setup selection, and isolated package installation. They do not provision a cloud computer. Local test execution needs permission to create Unix sockets. CI runs on macOS with Node.js 22 and 24.
+Tests cover authentication preservation, lifecycle decisions, lifetime extension, host registration, private sockets, byte transport, setup selection, and isolated package installation. They do not provision a cloud computer. `scripts/live-attach.mjs` attaches a Linux process to a computer the way a Mac does, for live multi-client checks; see `TESTING.md`. Local test execution needs permission to create Unix sockets. CI runs on macOS with Node.js 22 and 24.
 
 ## Uninstall
 

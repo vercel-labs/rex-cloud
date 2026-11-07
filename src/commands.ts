@@ -12,5 +12,5 @@ export function commandHint(message: string, env = process.env, cwd = process.cw
   } else if (!pkg || /^@vercel-labs\/rex-cloud(?:@[A-Za-z0-9.+-]+)?$/.test(pkg)) {
     command = `npx --yes ${pkg || '@vercel-labs/rex-cloud'}`;
   } else return message;
-  return message.replace(/\brex-cloud (?=(?:start|up|open|status|stop|disconnect|setup|login|--help)(?:\s|$|[.,]))/g, `${command} `);
+  return message.replace(/\brex-cloud (?=(?:start|up|open|status|extend|stop|disconnect|setup|login|--help)(?:\s|$|[.,]))/g, `${command} `);
 }

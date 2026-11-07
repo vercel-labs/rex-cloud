@@ -51,7 +51,8 @@ test('desktop preflight chooses supported installed build and does not mistake o
   assert.equal(newestApp([{ path: '/old', build: 1203 }]), undefined);
   assert.equal(foregroundMatches('"LSBundlePath"="/Volumes/Rex Beta/Rex Beta.app"\n"CFBundleVersion"="1203"', current), false);
   assert.equal(foregroundMatches('"LSBundlePath"="/Applications/Rex Beta.app"\n"CFBundleVersion"="1758"', current), true);
-  assert.match(stopTime('2026-11-06T23:00:00Z', Date.parse('2026-11-06T22:15:00Z')), /45 min remaining/);
+  assert.match(stopTime('2026-11-06T23:00:00Z', Date.parse('2026-11-06T22:15:00Z')), /45m remaining/);
+  assert.match(stopTime('2026-11-08T13:10:00Z', Date.parse('2026-11-07T17:40:00Z')), /19h 30m remaining/);
 });
 
 test('interrupt releases only the active command lock so a user can retry', async t => {
@@ -67,4 +68,20 @@ test('cloud prompt initializes empty homes and preserves existing shell customiz
   const root = await mkdtemp('/tmp/rex-prompt-'); t.after(() => rm(root, { recursive: true, force: true }));
   execFileSync('python3', ['-c', `import pathlib,runpy,sys\nf=runpy.run_path('assets/bootstrap.py')['setup_prompt'];p=pathlib.Path(sys.argv[1]);f(p,'remote');f(p,'other')\nassert 'sandbox:remote' in (p/'.bashrc').read_text()\nq=p/'custom';q.mkdir();(q/'.bashrc').write_text('custom prompt');f(q,'remote')\nassert (q/'.bashrc').read_text()=='custom prompt'\nassert not (q/'.profile').exists()`, root]);
   assert.match(await readFile(`${root}/.profile`, 'utf8'), /\.bashrc/);
+});
+
+test('host registration adds or updates only rex-cloud hosts and never blocks on failures', async () => {
+  const { registerHost } = await import('../dist/desktop.js');
+  const socket = '/tmp/rex-cloud-501-0123456789abcdef/fedcba9876543210/sandbox-remote.sock';
+  const calls = [];
+  const rex = hosts => async args => { calls.push(args.join(' ')); if (args[0] === 'hosts' && args[1] === '--json') return JSON.stringify({ hosts }); return ''; };
+  assert.equal(await registerHost('remote', socket, rex([])), 'added');
+  assert.match(calls.at(-1), /^hosts add remote unix:\/\/\/tmp\/rex-cloud-501-[a-f0-9]+\/[a-f0-9]+\/sandbox-remote\.sock --icon cloud$/);
+  assert.equal(await registerHost('Remote', socket, rex([{ host: { label: 'remote', endpoints: [`unix://${socket}`] }, from: 'home', held: false }])), 'current');
+  assert.equal(await registerHost('remote', socket, rex([{ host: { label: 'remote', endpoints: ['unix:///tmp/rex-cloud-501-0123456789abcdef/0000000000000000/sandbox-remote.sock'] }, from: 'home', held: false }])), 'updated');
+  assert.match(calls.at(-1), /^hosts edit remote --endpoint unix:\/\/\/tmp\/rex-cloud-501-/);
+  assert.equal(await registerHost('remote', socket, rex([{ host: { label: 'remote', endpoints: ['ssh://studio'] }, from: 'home', held: false }])), 'conflict');
+  assert.equal(await registerHost('remote', socket, async () => { throw new Error('unknown command "hosts"'); }), 'unsupported');
+  assert.equal(await registerHost('remote', socket, async () => 'not json'), 'unsupported');
+  assert.ok(calls.every(c => !c.includes('remove')), 'registration never removes hosts');
 });
