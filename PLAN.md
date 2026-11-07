@@ -48,19 +48,19 @@ Out of scope (recorded as limitations): automatic host registration in Rex for M
 
 | # | Check | Method | Status |
 | --- | --- | --- | --- |
-| 1 | Baseline: typecheck clean, 41 tests pass | `npm run check` | ✅ 2026-11-07 |
-| 2 | Two independent clients reach the same server and see the same session IDs | isolated `rex server run --state-dir … --listen unix://…` + two CLI clients via two bridges | pending |
-| 3 | Shared live output and input | `rex send` from client A, `rex capture` from client B | pending |
-| 4 | Session/tab/split/layout propagation | `rex events --all --json` on B while A runs `new`, `window new`, `split`, `focus`, `zoom` | pending |
-| 5 | Running process survives client disconnection | start `while :; do date; sleep 1; done` in a block, `disconnect` helper A, re-capture from B | pending |
-| 6 | Reconnection reaches the original process | record block PID / `$$` before and after reconnect | pending |
-| 7 | `extend` changes the deadline, same session ID, same PIDs | live on an isolated test computer | pending |
-| 8 | Extension limits, stopped computer, auth errors, ambiguous failures | unit tests + live stopped-computer check | pending |
-| 9 | Personal identity isolation / explicit sharing preserved | existing tests + no behaviour change | pending |
-| 10 | Auth recovery preserves the Vercel CLI login | existing `auth.test.mjs` + `test:login-command` | pending |
-| 11 | Install, repeated starts, reconnect | `npm pack` + `test:package`; repeated `open` against the test computer | pending |
-| 12 | Timeout / snapshot resume: files restored, processes gone | stop + start test computer; check marker file and process list | pending |
-| 13 | Sustained connectivity (≈2 h) | bridge + `rex events` stream with periodic `capture`, logged | pending |
-| 14 | Physical two-Mac GUI continuity | **manual, pending** — steps in `TESTING.md` | pending |
+| 1 | Baseline: typecheck clean, 41 tests pass | `npm run check` | ✅ 41/41 at a4da2ca; 52/52 after |
+| 2 | Two independent clients reach the same server and see the same session IDs | isolated `rex server run --state-dir … --listen unix://…` + two CLI clients via two bridges | ✅ live L1 (same pid 763 / instance 10d8e2a3) |
+| 3 | Shared live output and input | `rex send` from client A, `rex capture` from client B | ✅ live L1 |
+| 4 | Session/tab/split/layout propagation | `rex events --all --json` on B while A runs `new`, `window new`, `split`, `focus`, `zoom` | ✅ live L1 (events on B) |
+| 5 | Running process survives client disconnection | start `while :; do date; sleep 1; done` in a block, `disconnect` helper A, re-capture from B | ✅ live L2 (MARKER_PID 835 survived) |
+| 6 | Reconnection reaches the original process | record block PID / `$$` before and after reconnect | ✅ live L2 |
+| 7 | `extend` changes the deadline, same session ID, same PIDs | live on an isolated test computer | ✅ live L3 (18:51→20:51, same session) |
+| 8 | Extension limits, stopped computer, auth errors, ambiguous failures | unit tests + live stopped-computer check | ✅ unit + live L3/L4 (400 sandbox_timeout_invalid; stopped → start) |
+| 9 | Personal identity isolation / explicit sharing preserved | existing tests + no behaviour change | ✅ existing tests unchanged, 52/52 |
+| 10 | Auth recovery preserves the Vercel CLI login | existing `auth.test.mjs` + `test:login-command` | ✅ auth.test + test:login-command |
+| 11 | Install, repeated starts, reconnect | `npm pack` + `test:package`; repeated `open` against the test computer | ✅ test:package; repeated attach idempotent (L2) |
+| 12 | Timeout / snapshot resume: files restored, processes gone | stop + start test computer; check marker file and process list | ✅ live L4 (agenttest2: files back, processes gone) |
+| 13 | Sustained connectivity (≈2 h) | bridge + `rex events` stream with periodic `capture`, logged | ✅ live L5: 314 probes / 0 failures / 2h39m |
+| 14 | Physical two-Mac GUI continuity | **manual, pending** — steps in `TESTING.md` | ⏳ manual, pending — steps in TESTING.md |
 
 Protection rules while testing: never touch the live `remote` computer, its Rex server (`/vercel/.local/state/rex/run/server.sock`) or its deadline; isolated Rex servers use their own `--state-dir` and sockets under the scratchpad; cloud tests use computers named `agenttest-*` created and deleted by this agent only.

@@ -5,16 +5,16 @@ Evidence log for `feat/multi-client-extend`. Times are UTC. "Live" = real Vercel
 ## Protected resources (never touched)
 - Live `remote` computer: `rex-cloud-ba26fe7defb02116-remote`, session `sbx_Uy31DDvuAPefwRUBXVYVIeVyNTRJ`, Rex socket `/vercel/.local/state/rex/run/server.sock` (this agent runs inside it). Deadline left at 2026-11-08 13:10:22 UTC.
 
-## Resources created by this agent (delete at the end)
+## Resources created by this agent (all deleted 2026-11-07 20:40 UTC — see Cleanup)
 | Resource | ID | Created | Notes |
 | --- | --- | --- | --- |
 | Named sandbox `agenttest` (personal) | `rex-cloud-ba26fe7defb02116-agenttest`, session `sbx_RIBGcLsM3wyQ0jSOY0g3tWTki5Fd` | 2026-11-07 17:51 | team `team_TtmJZYmD3tcLBLqWOhoVawd1`, project `prj_IbmALXBur5uokFthCQ1j1hUkJrW8`, timeout 1h (expires 18:51:53) |
-| Local state roots | `/tmp/claude-1000/rc-a`, `/tmp/claude-1000/rc-b` | 17:51 | "device A" and "device B" helpers |
+| Local state roots | `/tmp/claude-1000/rc-a`, `/tmp/claude-1000/rc-b`, `/tmp/claude-1000/rc-c` | 17:51 | "device A" and "device B" helpers; rc-c = agenttest2 |
 | Isolated local Rex server | `XDG_STATE_HOME=/tmp/claude-1000/rx-a/state` | 17:49 | used for `rex hosts` experiments; hosts added were removed |
 
 ## Baseline
 - `npm run check` at `a4da2ca`: typecheck clean, **41/41 tests** pass (2026-11-07 17:50).
-- After this branch's changes: **50/50** tests pass, typecheck clean.
+- After this branch's changes: **52/52** tests pass, typecheck clean — also with no Vercel login (`HOME`/`XDG_DATA_HOME` empty), which is the CI condition. CI on macOS (Node 22, 24) green at `ab149d8`.
 
 ## Unit tests added (test/extend.test.mjs, test/ux.test.mjs)
 - extend adds time in place; success reported only from the re-read deadline on the same session ID.
@@ -70,6 +70,20 @@ Second disposable computer `rex-cloud-ba26fe7defb02116-agenttest2` (30m, session
 ### L5 — Sustained connectivity (live, device B bridge, 17:55 → 20:35 UTC)
 `scratchpad/monitor.sh`: every 30 s `rex -S <B> server status --json`; every 5 min a `capture` of the ticking block. Results are appended below when the run ends.
 
+**Result (observed, 2026-11-07 17:55:12 → 20:34:39 UTC, 2h39m):**
+
+| Metric | Value |
+| --- | --- |
+| Probes (`server status` over device B's bridge, every 30 s) | 314 |
+| Failures | 0 |
+| Distinct server instance IDs seen | 1 (`10d8e2a3-…`) |
+| Sessions reported | 1 throughout |
+| Tick captures (every 5 min, 32 total) | counter rose monotonically 1307 → 1917 (~61 per 5 min = the 5 s loop never paused) |
+
+Interpretation: the bridge from device B stayed usable for the whole window with no reconnect or server restart, and the
+process started earlier in the cloud block kept running. The monitor exited on its own at 20:35:09 UTC. Raw log:
+`scratchpad/monitor.log` (not committed; contains only timestamps, instance IDs and tick values).
+
 ## Manual acceptance on two physical Macs (pending — not verifiable from Linux)
 Prerequisites on **both** Macs: current Rex app in /Applications with `rex` on PATH, Node 22+, this branch installed (`npm install --global <tarball>` or `npm link` from the checkout), same Vercel user. Use `--team team_TtmJZYmD3tcLBLqWOhoVawd1 --project prj_IbmALXBur5uokFthCQ1j1hUkJrW8` on first `setup` if the Mac is not already configured for the `remote` computer.
 
@@ -82,3 +96,9 @@ Prerequisites on **both** Macs: current Rex app in /Applications with `rex` on P
 6. **Extend**: on either Mac `rex-cloud extend remote` → shows the stop time, asks for a duration; or `rex-cloud extend remote --by 2h`. Expect `Added 2h to remote. Nothing was interrupted.` and a later `Stops:`; the loop keeps running and both Macs stay connected. `rex-cloud status remote` on the other Mac shows the new time.
 7. Negative: `rex-cloud extend remote --by 30h` (rejected locally), `rex-cloud extend other` for a stopped computer (points to `start`).
 8. Cleanup is not needed for `remote`; stop test computers with `rex-cloud stop <name>`.
+
+## Cleanup (observed, 2026-11-07 20:38–20:40 UTC)
+- `agenttest`: `scripts/live-delete.mjs` → `{"deleted":"rex-cloud-ba26fe7defb02116-agenttest","lastStatus":"stopped"}`; API GET by name → `not_found`.
+- `agenttest2`: deleted earlier (18:15), `not_found` confirmed.
+- Helpers pid 112286 (A) and 111960 (B) disconnected via `disconnect()`; their bridge sockets and directories are gone. State roots rc-a/rc-b/rc-c and the isolated Rex server state (rx-a, already exited) removed.
+- Not touched: live `remote` sandbox and its deadline, Rex server pid 686, the two `relay.py` processes serving the user's own connections, Vercel/GitHub logins.

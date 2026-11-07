@@ -47,3 +47,21 @@ Branch: `feat/multi-client-extend` (local), base `a4da2ca` = tag `v0.1.0-prototy
 - agenttest2 deleted (`not_found` confirmed). agenttest still running (24h cap test) for the connectivity monitor;
   delete after 20:35 UTC with `node scripts/live-delete.mjs agenttest /tmp/claude-1000/rc-a` (+ disconnect rc-b).
 - Remaining: monitor results → TESTING.md L5; final publish of docs; cleanup; final report.
+
+## 2026-11-07 20:30 UTC — CI failure found and fixed
+- The PR's macOS CI (Node 22 and 24) failed on commits `3efd0bb` and `250f44c`: all `test/extend.test.mjs` cases
+  that call `extendComputer` threw `Vercel sign-in is required` because `findComputer` reads credentials before the
+  (fake) backend is used. Locally the suite passed only because this machine is signed into Vercel. Reproduced here
+  with `HOME`/`XDG_DATA_HOME` pointed at an empty directory: 8 of 10 fail on the old file.
+- Fix: the suite sets `VERCEL_TOKEN=test-only` in `test.before`, as `core`, `helper` and `context` tests already do.
+  The value never leaves the process; the backend is a fake. Full suite 52/52 in the logged-out condition.
+- Published as signed commit `ab149d8` (GraphQL `createCommitOnBranch`); CI now green: test (22), test (24),
+  Socket Security ×2, Vercel Internal Security Review.
+- Live verification of `extend` remains the record in TESTING.md L3/L4 (real sandbox `agenttest`, API re-reads).
+
+## 2026-11-07 20:40 UTC — Soak finished, cleanup done
+- L5 soak: 314 probes / 0 failures / 2h39m, single server instance, tick loop never paused (TESTING.md).
+- All created resources deleted and verified `not_found`; helpers disconnected; local test state removed. Live
+  `remote`, server pid 686 and the user's relay processes untouched. Details in TESTING.md "Cleanup".
+- PLAN acceptance table: 13 of 14 checks ✅; #14 (two physical Macs, sidebar host visibility) remains manual.
+- Logins left in place on this computer (Vercel CLI, gh) so the user can continue; `vercel logout` / `gh auth logout` remove them.
