@@ -5,6 +5,11 @@ import { extendComputer, stopTime } from '../dist/extend.js';
 import { label } from '../dist/desktop.js';
 
 const scope = { teamId: 'team_fixture', projectId: 'prj_fixture', userId: 'user_fixture', shared: false };
+// extend reads credentials before touching the backend, so give it a fixture token the way the other suites do.
+// Without this the suite only passes on a machine that is signed into Vercel, which CI is not.
+const savedToken = process.env.VERCEL_TOKEN;
+test.before(() => { process.env.VERCEL_TOKEN = 'test-only'; });
+test.after(() => { if (savedToken === undefined) delete process.env.VERCEL_TOKEN; else process.env.VERCEL_TOKEN = savedToken; });
 const HOUR = 3600000;
 const pro = async () => Response.json({ billing: { plan: 'pro' } });
 function error(status, code = 'bad_request') { return new APIError(new Response('', { status }), { json: { error: { code } }, message: 'sensitive https://example.invalid/?token=secret' }); }
