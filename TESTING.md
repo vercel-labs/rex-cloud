@@ -96,6 +96,8 @@ process started earlier in the cloud block kept running. The monitor exited on i
   of Rex, which does not accept a socket path as an endpoint. Update Rex there." The Linux Rex used for L-tests
   (`0.1.0-preview.13`, built 2026-11-03) accepts socket-path hosts. So automatic sidebar listing needs a Rex app at least
   as new as preview.13; the launcher now reports this case as `outdated` with an "update Rex" hint and the paste fallback. ❌ until Rex is updated
+- The `outdated` message was confirmed on the Mac at `f65d684` (prints even while Rex is attached). Rex updates via the app's
+  **Install Update** (Shift+Cmd+U) action; channel in Settings → Developer → App Version [doc].
 - Still open: sidebar refresh behaviour once a new enough Rex app is installed; two-Mac GUI flow.
 
 ## Manual acceptance on two physical Macs (pending — not verifiable from Linux)
