@@ -84,6 +84,20 @@ Interpretation: the bridge from device B stayed usable for the whole window with
 process started earlier in the cloud block kept running. The monitor exited on its own at 20:35:09 UTC. Raw log:
 `scratchpad/monitor.log` (not committed; contains only timestamps, instance IDs and tick values).
 
+## Mac observations (user-run, 2026-11-08)
+- **M1 — `extend` on the real `remote` computer (work Mac, branch build via `node dist/cli.js`):** `extend remote --by 1h`
+  moved the deadline 13:10:22 → 14:10:22 UTC on the same session `sbx_Uy31DDvuAPefwRUBXVYVIeVyNTRJ`, session length
+  20h → 21h, confirmed by an API read from inside the computer; the agent session running inside it was not interrupted.
+  `status` printed `Stops: Nov 8, 6:10 AM PST (14h 6m remaining)` and the `Add time:` hint. ✅
+- **M2 — host registration (work Mac, Rex CLI `0.0.1793645657`, built 2026-11-02, api revision 10):** after
+  `start remote --label "remote 1"` no host appeared in the sidebar and `rex hosts --json` listed none. Running the
+  launcher's call by hand shows the cause: the Mac app's server answers `hosts.put … "unix:///…" is a local socket, which
+  other machines cannot reach (status=400 code=bad_request)` and the CLI adds "this machine probably runs an older version
+  of Rex, which does not accept a socket path as an endpoint. Update Rex there." The Linux Rex used for L-tests
+  (`0.1.0-preview.13`, built 2026-11-03) accepts socket-path hosts. So automatic sidebar listing needs a Rex app at least
+  as new as preview.13; the launcher now reports this case as `outdated` with an "update Rex" hint and the paste fallback. ❌ until Rex is updated
+- Still open: sidebar refresh behaviour once a new enough Rex app is installed; two-Mac GUI flow.
+
 ## Manual acceptance on two physical Macs (pending — not verifiable from Linux)
 Prerequisites on **both** Macs: current Rex app in /Applications with `rex` on PATH, Node 22+, this branch installed (`npm install --global <tarball>` or `npm link` from the checkout), same Vercel user. Use `--team team_TtmJZYmD3tcLBLqWOhoVawd1 --project prj_IbmALXBur5uokFthCQ1j1hUkJrW8` on first `setup` if the Mac is not already configured for the `remote` computer.
 

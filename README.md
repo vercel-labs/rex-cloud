@@ -156,7 +156,7 @@ The Linux Rex executable is downloaded from Superlogical's release server and ch
 
 ## Preview limits
 
-This is a prototype for testing. Startup at Mac login and migration of a running local Mac session are not implemented. Host registration uses `rex hosts add`; whether the Mac sidebar lists such hosts immediately still needs confirmation on a Mac, so the socket path is always printed as a fallback. Fresh-account signup through the first cloud terminal, real credential renewal and physical two-Mac sleep/wake still need validation. Confirmation from Superlogical for the automated server-install flow is pending.
+This is a prototype for testing. Startup at Mac login and migration of a running local Mac session are not implemented. Host registration uses `rex hosts add` with a socket-path endpoint, which Rex accepts from 0.1.0-preview.13 (built 2026-11-03) on; an older Rex app rejects it (observed with 0.0.1793645657), and the launcher then says so and prints the socket path to paste instead. Whether the sidebar lists a newly added host without reopening Rex still needs confirmation. Fresh-account signup through the first cloud terminal, real credential renewal and physical two-Mac sleep/wake still need validation. Confirmation from Superlogical for the automated server-install flow is pending.
 
 ## Develop locally
 

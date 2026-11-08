@@ -89,6 +89,10 @@ test('host registration adds or updates only rex-cloud hosts and never blocks on
   assert.equal(await registerHost('remote', socket, async args => { if (args[1] === '--json') return JSON.stringify({ hosts: [{ host: { label: 'remote', endpoints: [stale] }, from: 'home', held: true }] }); throw new Error('home is away'); }, async () => false), 'unsupported');
   assert.equal(await registerHost('remote', socket, rex([{ host: { label: 'remote', endpoints: ['ssh://studio'] }, from: 'home', held: false }])), 'conflict');
   assert.equal(await registerHost('remote', socket, async () => { throw new Error('unknown command "hosts"'); }), 'unsupported');
+  // Observed on a Mac (Rex 0.0.1793645657, 2026-11-08): the app's server refuses socket-path endpoints.
+  const older = Object.assign(new Error('Command failed'), { stderr: 'Error: this machine: hosts.put: stream response "control-2" failed: host record endpoints[0]: "unix:///tmp/probe.sock" is a local socket, which other machines cannot reach (status=400 code=bad_request)\nthis machine probably runs an older version of Rex, which does not accept a socket path as an endpoint. Update Rex there, or use another endpoint.' });
+  assert.equal(await registerHost('remote', socket, async args => { if (args[1] === '--json') return JSON.stringify({ hosts: [] }); throw older; }), 'outdated');
+  assert.equal(await registerHost('remote', socket, async args => { if (args[1] === '--json') return JSON.stringify({ hosts: [{ host: { label: 'remote', endpoints: [stale] }, from: 'home', held: false }] }); throw older; }, async () => false), 'outdated');
   assert.equal(await registerHost('remote', socket, async () => 'not json'), 'unsupported');
   assert.ok(calls.every(c => !c.includes('remove')), 'registration never removes hosts');
 });

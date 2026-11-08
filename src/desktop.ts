@@ -53,7 +53,17 @@ export async function attached(socket: string): Promise<boolean | undefined> {
 }
 export const CLOUD_SOCKET = /^unix:\/\/\/tmp\/rex-cloud-\d+-[a-f0-9]{16}\//;
 export interface HostEntry { host: { label: string; endpoints: string[]; icon?: string }; from: string; held: boolean }
-export type HostRegistration = 'added' | 'updated' | 'current' | 'conflict' | 'unsupported';
+export type HostRegistration = 'added' | 'updated' | 'current' | 'conflict' | 'unsupported' | 'outdated';
+/**
+ * Observed 2026-11-08 on a Mac running Rex 0.0.1793645657 (built 2026-11-02): the app's server answers `hosts add` with
+ * `hosts.put … "unix:///…" is a local socket, which other machines cannot reach (status=400 code=bad_request)` and the CLI
+ * adds "this machine probably runs an older version of Rex, which does not accept a socket path as an endpoint".
+ * Rex 0.1.0-preview.13 (built 2026-11-03) accepts socket-path hosts.
+ */
+export function rejectsSocketHosts(error: unknown): boolean {
+  const text = [(error as { stderr?: string })?.stderr, (error as Error)?.message].filter(Boolean).join('\n');
+  return /is a local socket|does not accept a socket path/i.test(text);
+}
 /**
  * Register the computer as a Rex host, so it appears in Rex by label instead of a pasted socket path.
  * Rex stores hosts in the user's home server and shows them on every device that follows that home, and a device skips
@@ -82,9 +92,9 @@ export async function registerHost(name: string, socket: string,
     // --shared, or --state-dir), so it is left alone rather than silently repointed. Sockets that do not exist here are
     // other devices' bridges or stale paths; both are kept, because Rex skips paths that do not exist on a device.
     for (const e of endpoints) if (await live(e.slice('unix://'.length))) return 'conflict';
-    try { await run(['hosts', 'edit', existing.host.label, ...endpoints.flatMap(e => ['--endpoint', e]), '--endpoint', endpoint]); return 'updated'; } catch { return 'unsupported'; }
+    try { await run(['hosts', 'edit', existing.host.label, ...endpoints.flatMap(e => ['--endpoint', e]), '--endpoint', endpoint]); return 'updated'; } catch (e) { return rejectsSocketHosts(e) ? 'outdated' : 'unsupported'; }
   }
-  try { await run(['hosts', 'add', label, endpoint, '--icon', 'cloud']); return 'added'; } catch { return 'unsupported'; }
+  try { await run(['hosts', 'add', label, endpoint, '--icon', 'cloud']); return 'added'; } catch (e) { return rejectsSocketHosts(e) ? 'outdated' : 'unsupported'; }
 }
 export function label(ms: number): string {
   const minutes = Math.round(ms / 60000), hours = Math.floor(minutes / 60), rest = minutes % 60;
