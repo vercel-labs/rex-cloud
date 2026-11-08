@@ -19,7 +19,7 @@ const print = (message: string) => console.log(commandHint(message));
 const warn = (message: string) => console.error(commandHint(message));
 const HELP = `rex-cloud · cloud terminals for Rex (prototype)
 
-  rex-cloud start [name] [--timeout 45m] [--image VCR_REFERENCE] [--shared]
+  rex-cloud start [name] [--timeout 45m] [--image VCR_REFERENCE] [--shared] [--label "remote 1"]
   rex-cloud status [name]
   rex-cloud extend [name] [--by 2h]
   rex-cloud stop [name]
@@ -31,7 +31,8 @@ Run start from a local Mac terminal, including This Mac in Rex.
 The default name is dev. start creates or resumes the same cloud computer.
 On first use, reuse your Vercel login, linked project, or current CLI team.
 Without a project link, a rex-cloud project tracks Sandbox usage. Choose a team only if needed.
-Add the printed socket once in Rex → Add Remote Host, then select its terminal.
+start lists the computer as a host in Rex's sidebar; --label picks that sidebar name (default: the computer name).
+Renaming the host in Rex sticks. If it is not listed, add the printed socket via Add Remote Host.
 The cloud terminal starts fresh. Existing Mac sessions stay on your Mac.
 Computers belong to your Vercel user by default. --shared explicitly joins a team computer.
 Use --shared with every command for shared computers, including earlier prototype computers.
@@ -59,7 +60,7 @@ async function main() {
   process.umask(0o077);
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     help: { type: 'boolean', short: 'h' }, json: { type: 'boolean' }, team: { type: 'string' }, project: { type: 'string' },
-    'state-dir': { type: 'string' }, image: { type: 'string' }, timeout: { type: 'string' }, 'no-open': { type: 'boolean' }, shared: { type: 'boolean' }, by: { type: 'string' },
+    'state-dir': { type: 'string' }, image: { type: 'string' }, timeout: { type: 'string' }, 'no-open': { type: 'boolean' }, shared: { type: 'boolean' }, by: { type: 'string' }, label: { type: 'string' },
   } });
   const command = positionals[0];
   if (values.help || !command) { print(HELP); return; }
@@ -70,6 +71,8 @@ async function main() {
   const starting = ['start', 'up', 'open'].includes(command);
   if (values.image && !['start', 'up'].includes(command)) throw new Error('--image is available with start. Use a new computer name to change images.');
   if (values.timeout && !starting) throw new Error('--timeout is available with start, up and open.');
+  if (values.label !== undefined && !starting) throw new Error('--label is available with start, up and open.');
+  if (values.label !== undefined && !values.label.trim()) throw new Error('Give --label a name to show in Rex, for example --label "remote 1".');
   if (command === 'login') { await login(); return; }
   const root = stateRoot(values['state-dir']);
   await privateDir(root);
@@ -87,6 +90,7 @@ async function main() {
     return;
   }
   const name = validateName(positionals[1] ?? 'dev');
+  const hostLabel = values.label?.trim() ?? name;
   const cachedAccount = await readJSON<{ userId: string }>(join(root, 'account.json'));
   if (command !== 'disconnect') await authenticate(interactive);
   const userId = command === 'disconnect' ? cachedAccount?.userId : await currentUser();
@@ -168,7 +172,7 @@ async function main() {
       await ensureHelper(root, work);
       await exec('rex', ['--autostart=false', '--timeout', '20s', '-S', paths.socket, 'server', 'status', '--json'], { timeout: 25000, maxBuffer: 1024 * 1024 });
       const data = { ...summary(s, name), ...remote, socket: paths.socket, created };
-      if (values.json) { print(JSON.stringify({ ...data, host: await registerHost(name, paths.socket) })); return; }
+      if (values.json) { print(JSON.stringify({ ...data, host: await registerHost(name, paths.socket, undefined, undefined, hostLabel), hostLabel })); return; }
       if (!values['no-open']) {
         try {
           const foreground = await openDesktop(app);
@@ -176,13 +180,13 @@ async function main() {
         } catch { log(`Could not bring Rex forward. Open ${app.path} from Applications.`); }
       }
       // Register after the app is up so its local server answers `rex hosts`; failures only change the printed guidance.
-      const host = await registerHost(name, paths.socket);
+      const host = await registerHost(name, paths.socket, undefined, undefined, hostLabel);
       const connected = await attached(paths.socket);
       print(`\n${name} ${resumed ? 'resumed' : 'is ready'}.`);
       if (resumed) print('Files restored. Terminals start as fresh shells.');
-      if (connected) print(`Select ${name} in Rex to continue.`);
-      else if (['added', 'updated', 'current'].includes(host)) print(`In Rex, select the ${name} host in the sidebar, then its bash terminal.\nIf it is not listed, choose Add Remote Host and paste:\n\n${paths.socket}\n`);
-      else print(`Connect once on this Mac:\n  1. In ${app.path}, choose Add Remote Host.\n  2. Paste this path and select the Connect to… result:\n\n${paths.socket}\n\n  3. Select ${name}, then its bash terminal.${host === 'conflict' ? `\nA different host is already named ${name} in Rex, so it was left unchanged.` : '\nIf Rex rejects the path, check that you opened the Applications copy.'}`);
+      if (connected) print(`Select ${hostLabel} in Rex to continue.`);
+      else if (['added', 'updated', 'current'].includes(host)) print(`In Rex, select the ${hostLabel} host in the sidebar, then its bash terminal.${host === 'current' && hostLabel !== name ? ` (It may still carry the name you gave it in Rex.)` : ''}\nIf it is not listed, choose Add Remote Host and paste:\n\n${paths.socket}\n`);
+      else print(`Connect once on this Mac:\n  1. In ${app.path}, choose Add Remote Host.\n  2. Paste this path and select the Connect to… result:\n\n${paths.socket}\n\n  3. Select ${hostLabel}, then its bash terminal.${host === 'conflict' ? `\nA different host is already named ${hostLabel} in Rex, so it was left unchanged. Pick another sidebar name with --label.` : '\nIf Rex rejects the path, check that you opened the Applications copy.'}`);
       print(`Stops: ${stopTime(data.expiresAt)}`);
       if (created || !connected) print(`\nFrom your Mac:\n  Reconnect: rex-cloud start ${target}\n  Add time: rex-cloud extend ${target}\n  Stop: rex-cloud stop ${target}`);
     } catch (e) {

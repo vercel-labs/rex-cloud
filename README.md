@@ -22,7 +22,7 @@ rex-cloud start remote
 
 The launcher reuses your Vercel login or opens browser sign-in. It uses your linked project or current Vercel CLI team when available. Otherwise, it asks you to choose a team and finds or creates a `rex-cloud` project to track Sandbox usage. It asks how long the computer should run, then starts it and opens Rex.
 
-The launcher registers the computer as a Rex host named **remote** (`rex hosts add`). Select **remote** in Rex's sidebar, then its terminal. If the host is not listed, connect once by hand:
+The launcher registers the computer as a Rex host named **remote** (`rex hosts add`). Select **remote** in Rex's sidebar, then its terminal. To use a different sidebar name, pass `--label "remote 1"` to `start`, or rename the host in Rex: the launcher recognises it by its socket and will not add a second entry. If the host is not listed, connect once by hand:
 
 1. Choose **Add Remote Host** in Rex.
 2. Paste the socket path printed by the launcher and select **Connect to…**.
@@ -121,7 +121,7 @@ Custom images need Linux amd64, glibc, Python 3, CA certificates, and Rex's runt
 
 ## Connect from another Mac or share deliberately
 
-Install the preview on the other Mac, sign into the same Vercel user, select the same team and project, and run `rex-cloud start remote`. The command reconnects to the running computer without changing its stop time, starts that Mac's own private bridge, and registers the **remote** host in that Mac's Rex. Both Macs are clients of the same cloud Rex server through Vercel's authenticated connection: they see the same sessions, windows, splits, layout and live terminal output, and either can type into any terminal. Closing one laptop only drops its client; the cloud processes keep running and the other Mac keeps controlling them. Tailscale is not required.
+Install the preview on the other Mac, sign into the same Vercel user, select the same team and project, and run `rex-cloud start remote`. The command reconnects to the running computer without changing its stop time, starts that Mac's own private bridge, and registers the **remote** host for that Mac. Rex keeps hosts in your Rex home, so a host made on one Mac is listed on every Mac that follows the same home; the launcher adds each Mac's own socket as a further endpoint of that one host rather than replacing the other Mac's, and Rex skips endpoints whose path does not exist on the current device. Both Macs are clients of the same cloud Rex server through Vercel's authenticated connection: they see the same sessions, windows, splits, layout and live terminal output, and either can type into any terminal. Closing one laptop only drops its client; the cloud processes keep running and the other Mac keeps controlling them. Tailscale is not required.
 
 What is shared is the server's state: sessions, windows (tabs), block splits and layout, zoom, focus and scrollback. What stays per Mac is which session is selected in the sidebar and the window size of Rex itself; a terminal's size follows the client that owns it. Verified with two Linux clients over two bridges; physical two-Mac sleep/wake testing is still pending.
 

@@ -55,12 +55,16 @@ export const CLOUD_SOCKET = /^unix:\/\/\/tmp\/rex-cloud-\d+-[a-f0-9]{16}\//;
 export interface HostEntry { host: { label: string; endpoints: string[]; icon?: string }; from: string; held: boolean }
 export type HostRegistration = 'added' | 'updated' | 'current' | 'conflict' | 'unsupported';
 /**
- * Register the computer as a Rex host named after it, so it appears in Rex by label instead of a pasted socket path.
- * Only hosts whose endpoint is a rex-cloud socket are ever changed. Failures never block the connection.
+ * Register the computer as a Rex host, so it appears in Rex by label instead of a pasted socket path.
+ * Rex stores hosts in the user's home server and shows them on every device that follows that home, and a device skips
+ * socket endpoints whose path does not exist on it. So one host carries one socket endpoint per Mac, and a host that
+ * already lists this Mac's socket is current whatever it is called (a rename in Rex sticks). Only hosts whose endpoints
+ * are all rex-cloud sockets are ever changed, nothing is removed, and failures never block the connection.
  */
 export async function registerHost(name: string, socket: string,
   run: (args: string[]) => Promise<string> = async args => (await exec('rex', ['--autostart=false', '--timeout', '5s', ...args], { timeout: 10000, maxBuffer: 1024 * 1024 })).stdout,
   live: (path: string) => Promise<boolean> = path => checkFile(path, true).catch(() => true),
+  label: string = name,
 ): Promise<HostRegistration> {
   const endpoint = `unix://${socket}`;
   let hosts: HostEntry[];
@@ -69,17 +73,18 @@ export async function registerHost(name: string, socket: string,
     if (!Array.isArray(data.hosts)) return 'unsupported';
     hosts = data.hosts;
   } catch { return 'unsupported'; }
-  const existing = hosts.find(h => h.host?.label?.toLowerCase() === name.toLowerCase());
+  if (hosts.some(h => h.host?.endpoints?.includes(endpoint))) return 'current';
+  const existing = hosts.find(h => h.host?.label?.toLowerCase() === label.toLowerCase());
   if (existing) {
     const endpoints = existing.host.endpoints ?? [];
-    if (endpoints.includes(endpoint)) return 'current';
-    // Only replace a stale rex-cloud socket. A socket that still exists belongs to another live bridge with the same
-    // name (another account, --shared, or --state-dir), so it is left alone rather than silently repointed.
     if (!endpoints.every(e => CLOUD_SOCKET.test(e))) return 'conflict';
+    // A socket that still exists on this Mac belongs to another live bridge with the same label (another account,
+    // --shared, or --state-dir), so it is left alone rather than silently repointed. Sockets that do not exist here are
+    // other devices' bridges or stale paths; both are kept, because Rex skips paths that do not exist on a device.
     for (const e of endpoints) if (await live(e.slice('unix://'.length))) return 'conflict';
-    try { await run(['hosts', 'edit', existing.host.label, '--endpoint', endpoint]); return 'updated'; } catch { return 'unsupported'; }
+    try { await run(['hosts', 'edit', existing.host.label, ...endpoints.flatMap(e => ['--endpoint', e]), '--endpoint', endpoint]); return 'updated'; } catch { return 'unsupported'; }
   }
-  try { await run(['hosts', 'add', name, endpoint, '--icon', 'cloud']); return 'added'; } catch { return 'unsupported'; }
+  try { await run(['hosts', 'add', label, endpoint, '--icon', 'cloud']); return 'added'; } catch { return 'unsupported'; }
 }
 export function label(ms: number): string {
   const minutes = Math.round(ms / 60000), hours = Math.floor(minutes / 60), rest = minutes % 60;
