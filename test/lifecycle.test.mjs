@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import { agentInfo, deleteComputer, OWNER, APIError } from '../dist/cloud.js';
 import { unregisterHost } from '../dist/desktop.js';
 
+// deleteComputer reads credentials before touching the backend; a fixture token keeps the suite independent of a
+// Vercel login, which CI does not have.
+const savedToken = process.env.VERCEL_TOKEN;
+test.before(() => { process.env.VERCEL_TOKEN = 'test-only'; });
+test.after(() => { if (savedToken === undefined) delete process.env.VERCEL_TOKEN; else process.env.VERCEL_TOKEN = savedToken; });
 const scope = { teamId: 'team_fixture', projectId: 'prj_fixture', userId: 'user_fixture', shared: false };
 const owned = { launcher: OWNER, owner: 'user_fixture', sharing: 'personal' };
 function computer(status, tags = owned) {
