@@ -22,11 +22,14 @@ rex-cloud start remote
 
 The launcher reuses your Vercel login or opens browser sign-in. It uses your linked project or current Vercel CLI team when available. Otherwise, it asks you to choose a team and finds or creates a `rex-cloud` project to track Sandbox usage. It asks how long the computer should run, then starts it and opens Rex.
 
-The launcher registers the computer as a Rex host named **remote** (`rex hosts add`). Select **remote** in Rex's sidebar, then its terminal. To use a different sidebar name, pass `--label "remote 1"` to `start`, or rename the host in Rex: the launcher recognises it by its socket and will not add a second entry. If the host is not listed, connect once by hand:
+The launcher registers the computer as a Rex host named **remote** (`rex hosts add`). To use a different name, pass `--label "remote 1"` to `start`. The current Rex app shows only hosts added in the app, so add each new computer once on each Mac:
 
-1. Choose **Add Remote Host** in Rex.
-2. Paste the socket path printed by the launcher and select **Connect to…**.
+1. In Rex, open **Settings → Remote Hosts** and choose **Add Remote Host…**.
+2. Paste the socket path printed by the launcher as the **Host URL**, and enter **remote** as the **Host name**.
+   The **Add Remote Host** button in the sidebar also connects, but names the host after the socket file.
 3. Select **remote**, then its terminal in the sidebar.
+
+The socket path stays the same for that computer, including after `stop`, `start` and `restart`, so you only add it once. New sessions and tabs created on the computer, by you or an agent, appear under its host automatically.
 
 Your cloud shell shows a prompt such as `sandbox:remote ~ $`. Run `uname -s` there to see `Linux`. Clone a repository, install your tools, and sign into your coding agent inside that terminal. Your Mac's files and running sessions stay on your Mac.
 
@@ -91,6 +94,30 @@ rex-cloud extend remote --by 2h  # adds two hours without a prompt
 ```
 
 `extend` uses Sandbox's timeout extension on the running session. It never creates, resumes or restarts anything: for a stopped computer it points you to `rex-cloud start` instead. The total run may not exceed your plan limit (45 minutes on Hobby, 24 hours on Pro and Enterprise); the command tells you how much can still be added. Success is reported only after Vercel confirms the new stop time, which `status` also shows. If the request fails ambiguously, `extend` re-reads the stop time instead of retrying, so time is never added twice.
+
+## Stop, restart or delete
+
+| Command | Running programs | Files and saved disk | Use it when |
+| --- | --- | --- | --- |
+| `rex-cloud stop remote` | End | Kept. `start` boots from the saved disk | You're done for now and want to come back to the same workspace |
+| `rex-cloud restart remote` | Restart as fresh shells | Kept | Something in the computer is stuck and you want to keep its files |
+| `rex-cloud delete remote --yes` | End | **Removed permanently**, including snapshots | The work is finished and you want the name and storage back |
+
+`delete` also stops this Mac's connection helper, removes the host rex-cloud registered and clears its local records. The Rex app keeps the entry you added in **Settings → Remote Hosts**, so remove it there too. Without `--yes` it only explains what would be removed. After a delete, `rex-cloud start remote` creates a new, empty computer.
+
+## Work from an agent
+
+An agent in a local Rex terminal can run every command in this README. Add `--json` for machine-readable output. To run commands and copy files inside a computer without opening a terminal, combine `status --json` with the [Sandbox CLI](https://vercel.com/docs/sandbox/cli-reference):
+
+```sh
+rex-cloud status remote --json   # includes "sandbox", "teamId" and "projectId"
+sandbox exec --scope <teamId> --project <projectId> <sandbox> -- npm test
+sandbox cp --scope <teamId> --project <projectId> ./notes.md <sandbox>:/vercel/notes.md
+```
+
+`start --json` includes `rexAttached`. Right after a resume the Rex app can take a few seconds to reconnect, so check `rex-cloud status <name>` again before acting on `false`. If it stays `false`, the Rex app isn't showing the computer; give the person the `socket` and `hostLabel` from the same output so they can add it in **Settings → Remote Hosts**.
+
+`sandbox exec` returns the command's output and exit code, and runs in the same computer and filesystem as its Rex terminals. Its output doesn't appear in the Rex sidebar. To let someone watch, open a terminal on the computer's Rex host instead. `sandbox exec` prints the command it runs on its first line. `sandbox ls` lists running sandboxes only; add `--all` to include stopped ones.
 
 ## Use an existing Vercel project
 
@@ -181,4 +208,4 @@ rex-cloud disconnect remote
 npm uninstall --global @vercel-labs/rex-cloud
 ```
 
-Uninstalling leaves saved snapshots and local configuration intact.
+Uninstalling leaves saved snapshots and local configuration intact. To remove a computer and its snapshots before uninstalling, run `rex-cloud delete remote --yes`.

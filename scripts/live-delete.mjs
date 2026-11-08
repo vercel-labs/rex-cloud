@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Live test cleanup (not part of `npm test`). Disconnects the local helper, stops the computer if it is running and
-// deletes the named sandbox and its snapshot. Only computers created by rex-cloud for the current user are touched.
+// deletes the named sandbox and its snapshots. Only computers created by rex-cloud for the current user are touched.
 //
 //   node scripts/live-delete.mjs <name> <state-root> [--shared]
 import { parseArgs } from 'node:util';
@@ -20,5 +20,5 @@ const work = await readJSON(paths.record);
 if (work) await disconnect(root, work);
 const s = await findComputer(identity, name);
 if (s.status === 'running') { console.error(`stopping ${s.name}…`); await s.stop(); }
-await s.delete();
+await s.delete({ deleteOrphanSnapshots: true }); // without it the snapshot is kept until it expires
 console.log(JSON.stringify({ deleted: s.name, lastStatus: s.status }));

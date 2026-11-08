@@ -25,6 +25,29 @@ export async function findComputer(scope: Scope & Partial<Identity>, name: strin
   assertOwned(s, scope);
   return s;
 }
+/** What an agent needs to work inside the computer with the Sandbox CLI (`sandbox exec|cp --scope … --project … <sandbox>`). */
+export function agentInfo(scope: Scope, s: Pick<Sandbox, 'name'>) {
+  return { sandbox: s.name, teamId: scope.teamId, projectId: scope.projectId };
+}
+/**
+ * Permanently remove a computer. The SDK keeps a deleted sandbox's snapshots until they expire unless
+ * deleteOrphanSnapshots is set, which would leave the saved disk billed for up to 30 days, so it is always set here.
+ */
+export async function deleteComputer(scope: Scope & Partial<Identity>, name: string, backend: Backend = Sandbox,
+  hooks: { onStop?: () => void; beforeDelete?: () => Promise<void> } = {}) {
+  let s: Sandbox;
+  // Only a not_found from the lookup means "already gone"; a not_found from stop/delete is a real failure.
+  try { s = await findComputer(scope, name, backend); }
+  catch (e) { if (apiCode(e) === 'not_found') return { found: false as const }; throw e; }
+  const cloud = s.name;
+  // Deleting mid-transition could let a snapshot that is still being written land after the orphan-snapshot sweep.
+  if (!['running', 'stopped', 'failed', 'aborted'].includes(s.status)) throw new Error(`Computer is ${s.status}. Retry delete when its transition finishes.`);
+  // Runs only once the computer is known to be ours and deletable, so a refused delete leaves the Mac's bridge up.
+  await hooks.beforeDelete?.();
+  if (s.status === 'running') { hooks.onStop?.(); await s.stop(); }
+  await s.delete({ deleteOrphanSnapshots: true });
+  return { found: true as const, cloudName: cloud, snapshots: 'deleting' as const };
+}
 export async function ensureComputer(scope: Identity, name: string, opts: { create: boolean; image?: string; timeout: number | (() => Promise<number>); onProgress?: (action: 'creating' | 'resuming' | 'connecting') => void }, backend: Backend = Sandbox) {
   const auth = await credentials(scope), computerName = cloudName(scope, name);
   const timeout = () => typeof opts.timeout === 'function' ? opts.timeout() : Promise.resolve(opts.timeout);

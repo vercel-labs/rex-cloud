@@ -96,6 +96,35 @@ export async function registerHost(name: string, socket: string,
   }
   try { await run(['hosts', 'add', label, endpoint, '--icon', 'cloud']); return 'added'; } catch (e) { return rejectsSocketHosts(e) ? 'outdated' : 'unsupported'; }
 }
+export type HostRemoval = 'removed' | 'edited' | 'none' | 'unsupported';
+/**
+ * Remove this Mac's socket from the Rex hosts that list it, for delete. A host whose only endpoint is this socket is
+ * removed; a host that also lists other devices' sockets keeps them. Hosts with any non-rex-cloud endpoint are never
+ * changed. A Rex app that holds its own entry for the socket (an earlier Add Remote Host paste) re-adds it, so that
+ * entry has to be removed in the app's Settings → Remote Hosts.
+ */
+export async function unregisterHost(socket: string,
+  run: (args: string[]) => Promise<string> = async args => (await exec('rex', ['--autostart=false', '--timeout', '5s', ...args], { timeout: 10000, maxBuffer: 1024 * 1024 })).stdout,
+): Promise<HostRemoval> {
+  const endpoint = `unix://${socket}`;
+  let hosts: HostEntry[];
+  try {
+    const data = JSON.parse(await run(['hosts', '--json'])) as { hosts?: HostEntry[] };
+    if (!Array.isArray(data.hosts)) return 'unsupported';
+    hosts = data.hosts;
+  } catch { return 'unsupported'; }
+  let result: HostRemoval = 'none';
+  for (const h of hosts) {
+    const endpoints = h.host?.endpoints ?? [];
+    if (!endpoints.includes(endpoint) || !endpoints.every(e => CLOUD_SOCKET.test(e))) continue;
+    const rest = endpoints.filter(e => e !== endpoint);
+    try {
+      if (rest.length) { await run(['hosts', 'edit', h.host.label, ...rest.flatMap(e => ['--endpoint', e])]); if (result === 'none') result = 'edited'; }
+      else { await run(['hosts', 'remove', h.host.label]); result = 'removed'; }
+    } catch { return 'unsupported'; }
+  }
+  return result;
+}
 export function label(ms: number): string {
   const minutes = Math.round(ms / 60000), hours = Math.floor(minutes / 60), rest = minutes % 60;
   return hours && rest ? `${hours}h ${rest}m` : hours ? `${hours}h` : `${rest}m`;
