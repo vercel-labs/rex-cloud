@@ -110,14 +110,73 @@ process started earlier in the cloud block kept running. The monitor exited on i
   earlier manual pastes; they can be removed with `rex hosts remove <label>`.
 - **M5 — Rex UI observation:** with the cloud host selected, "new session" and even "This Mac" opened Linux sessions on
   the cloud computer (`uname -s` → Linux); the user needed Terminal.app for a Mac shell. Worth raising with Superlogical.
-- Still open: sidebar visibility of a registered host (M4); two-Mac GUI flow. Continue from a Claude Code session on the
+- **M6 — why "remote 1" is not in the sidebar (local Mac session, 2026-11-08 00:45–00:55 UTC; in progress):**
+  - [observed] Two Rex apps run at once and both are clients of the Mac's server (`rex client ls`): build 1853 from
+    `/Applications/Rex Beta.app` (pid 30309, launched 00:24 UTC, frontmost) and build **1203** from the mounted installer
+    image `/Volumes/Rex Beta/Rex Beta.app` (pid 32541, running since 2026-10-16).
+  - [observed] The sidebar lists four host rows: three with a warning icon (`macbook-air-personal…`, `960b0fbbdd00d5a1.sock`,
+    `sandbox-remote.sock`) and one globe `sandbox-remote.sock`. `rex hosts check` reports exactly three hosts down or
+    unreachable and one reachable, `remote 1`. The globe row holds sessions `remote` and `lively-cove`, which are the two
+    sessions `rex -S unix://…/4a55a3722f1227fd/sandbox-remote.sock session ls` returns from the live `remote` server (pid 686).
+  - [inference] The globe `sandbox-remote.sock` row *is* the live `remote` computer, shown under an older app-held label and
+    icon instead of the store's `remote 1` / cloud. Falsifier: Settings → Remote Hosts shows that row's address as another socket.
+  - [observed, server log] At 00:24:48 UTC the newly launched app sent three `hosts.put` calls that the old server rejected
+    (400). At 00:37:07, right after rex-cloud's `hosts.put` for `remote 1` succeeded, the app sent four more: two succeeded
+    (the two globe hosts now in the store) and two failed with **409**. [inference] The app keeps its own host list from earlier
+    manual pastes and migrates it into the server store; its entry for the same socket conflicted with `remote 1` and the app
+    kept showing its own entry.
+  - [observed] The two globe hosts are not dead sockets: both files exist and have live helpers (pid 82261 for shared `dev`,
+    pid 95332 for a `remote` computer in team `team_6FYa…` from a temp state root), but nothing answers behind them
+    (`hosts check`: `down`, handshake EOF).
+  - [doc] Settings → Remote Hosts "Add, reorder, and manage remote Rex hosts, view connection status, and retry connection
+    failures" (mac-settings.md, sha256 `ebb3085a…`, fetched 2026-11-08). App updates: `client.update.accept` / Shift+Cmd+U
+    (mac-actions.md, sha256 `3ce4b9a1…`).
+  - [observed, 00:54 UTC] With the user's approval, both helpers were stopped (`disconnect dev --shared`;
+    `disconnect remote --state-dir <temp root>`; pids 82261 and 95332 gone, sockets removed; `remote 1` helper pid 23531 kept)
+    and both hosts removed with `rex hosts remove`. Both reappeared within the same second: the log shows `hosts.remove` 200
+    followed at once by app `hosts.put` 200 (plus two 409s, as at 00:37). A Rex app re-adds hosts from its own list, so a
+    CLI removal does not stick while the app holds them; removal has to happen in the app.
+  - [observed, 00:59 UTC] Quit the stale build-1203 app (SIGTERM to pid 32541; server marks its client `lost`) and ejected
+    `/Volumes/Rex Beta`. Repeated `rex hosts remove` for both: re-added again within 0.1 s, so the current build-1853 app
+    (pid 30309, the only app left) is the one re-adding them.
+  - [observed, Settings → Remote Hosts screenshot, 01:02 UTC] Four rows: `macbook-air-personal…` Couldn't connect;
+    `960b0fbbdd00d5a1.sock` (`/tmp/rex-cloud-501-4232…`) Couldn't connect; `sandbox-remote.sock` (`/tmp/rex-cloud-501-f2e4266…`)
+    Couldn't connect; `sandbox-remote.sock` (`/tmp/rex-cloud-501-4232ecb1e1065675/4a55a372…`) **Connected**. This confirms the
+    inference: `remote 1` is in the sidebar, under the app's own label `sandbox-remote.sock` and a globe icon. No row is
+    labelled `remote 1`, so the app does not take the label or icon from the server's host store for an endpoint it already holds.
+  - [observed, 01:06 UTC] Removing the two dead rows in Settings → Remote Hosts stuck (gone from the app and the store).
+    The store now holds **two entries for one endpoint** (`…/4a55a3722f1227fd/sandbox-remote.sock`): rex-cloud's `remote 1`
+    (cloud, 00:37:07) and the app's `sandbox-remote.sock` (globe, re-put 01:06:31). The app shows only its own entry.
+    Conclusion for the README: `start` registers the host, but if the Rex app already has a host for that socket, the app
+    keeps showing its own name and icon instead of the `--label`.
+  - Not yet checked: Settings → Remote Hosts entries and addresses, Settings → Developer → App Version, quitting the stale
+    build-1203 app, Cmd+Q/reopen of the current app.
+- **M7 — lifecycle (status agent fields, restart, delete) and sidebar visibility, live, 2026-11-08 06:00–06:50 UTC (Mac, Rex 0.1.0 build 1853):**
+  - [observed] `start lifecycle-demo --timeout 45m --json` → running, `host: added`; `rex hosts check` → reachable. The app's
+    Settings → Remote Hosts and sidebar did **not** list it; `status` → `Rex: not connected`. The computer had a session with one tab,
+    so an empty session was not the cause.
+  - [observed] Adding the same socket in the app (Add Remote Host, Host URL = socket, Host name = `lifecycle-demo`, filled with
+    agent-desktop) → listed under that name with its session and tab within seconds; `status` → `Rex: connected`. The app shows only
+    hosts in its own list; `rex hosts add` entries are not imported. Sessions created on a host the app already lists appear
+    automatically (chain-demo under `sandbox-remote.sock`, same night).
+  - [observed] `client.host.add` / `client.host.remove` list no arguments; `rex -C <app> do client.host.add …` → "Rex.app is not
+    accepting actions. Turn on Remote Control…". Not tested with Remote Control on (Rex's agent guide says not to change it).
+  - [observed] `status --json` → `sandbox`, `teamId`, `projectId`; `sandbox exec --scope … --project … <sandbox> -- …` wrote a marker and
+    started `sleep` (pid 945). `restart --json` (6 s) → running, marker present, no `sleep`.
+  - [observed] `delete lifecycle-demo --yes` (run by the user) → status `not_found`, absent from `sandbox ls`, local record and
+    preferences removed, helper socket gone. Both snapshots from its sessions (`sbx_RTKn…`, `sbx_itVu…`) listed `deleted` in
+    `sandbox snapshots ls`. The app re-added its own host entry immediately (as in M6); removing it in Settings → Remote Hosts stuck.
+  - [observed] Before the fix, `scripts/live-delete.mjs` (SDK `delete()` without `deleteOrphanSnapshots`) left snapshots
+    `snap_bhSw…` and `snap_S5BJ…` (802 MiB each, 30-day expiry) after deleting agentpar-1/2. Not deleted yet (needs approval).
+  - Not verified live: `start` reusing a name right after `delete` (code path: not_found → create).
+- Sidebar visibility of a registered host (M4) is answered by M7. Still open: two-Mac GUI flow. Continue from a Claude Code session on the
   Mac itself, where screenshots can be pasted.
 
 ## Manual acceptance on two physical Macs (pending — not verifiable from Linux)
 Prerequisites on **both** Macs: current Rex app in /Applications with `rex` on PATH, Node 22+, this branch installed (`npm install --global <tarball>` or `npm link` from the checkout), same Vercel user. Use `--team team_TtmJZYmD3tcLBLqWOhoVawd1 --project prj_IbmALXBur5uokFthCQ1j1hUkJrW8` on first `setup` if the Mac is not already configured for the `remote` computer.
 
 1. **Work Mac — first use / reconnect**: `rex-cloud start remote`. Expect: reuse of the Vercel login, `Connecting to remote…` (no duration prompt for a running computer), then either `Select remote in Rex to continue.` or `In Rex, select the remote host in the sidebar…` plus the socket path fallback. Expected `Stops:` equals `rex-cloud status remote`.
-   - Check: does the **remote** host appear in Rex's sidebar without pasting? (`rex hosts` on the Mac should list `remote → unix:///tmp/rex-cloud-…/sandbox-remote.sock`.) Record yes/no — this decides whether the README's "registers the computer as a Rex host" sentence can drop its fallback.
+   - Check: does the **remote** host appear in Rex's sidebar without pasting? (`rex hosts` on the Mac should list `remote → unix:///tmp/rex-cloud-…/sandbox-remote.sock`.) Record yes/no. (M7: no with Rex 1853; the README now tells users to add the host in Settings → Remote Hosts.)
 2. In the cloud terminal start something long-lived, e.g. `claude` or `while :; do date; sleep 2; done`, and note the PID (`echo $$`).
 3. **Close the work Mac's lid** (or `rex-cloud disconnect remote`). Wait ≥2 minutes.
 4. **Personal Mac**: `rex-cloud start remote`. Expect `Connecting to remote…`, same `Stops:` time (no extension), host registered/listed. Select **remote** → the same session, windows and splits, with the loop still running and the same PID. Type into the terminal: input works. Open a split: it must appear on the work Mac when it wakes.
