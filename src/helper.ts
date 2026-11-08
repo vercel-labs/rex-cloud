@@ -42,7 +42,9 @@ export async function control(path: string, command = 'status'): Promise<HelperS
     socket.on('connect', () => socket.write(JSON.stringify({ command }) + '\n'));
     socket.on('data', b => { data += b; if (data.length > 4096) finish(new Error('Invalid helper response.')); });
     socket.on('end', () => { if (!data) { finish(); return; } try { finish(undefined, JSON.parse(data)); } catch { finish(new Error('Invalid helper response.')); } });
-    socket.on('error', (e: NodeJS.ErrnoException) => ['ENOENT', 'ECONNREFUSED', 'ECONNRESET', 'EPIPE'].includes(e.code ?? '') ? finish() : finish(e));
+    // A helper that exits between connect and write surfaces as ENOTCONN (seen in CI as `write ENOTCONN`); like the other
+    // dropped-connection codes it means "no helper is answering", not a failure of the command.
+    socket.on('error', (e: NodeJS.ErrnoException) => ['ENOENT', 'ECONNREFUSED', 'ECONNRESET', 'EPIPE', 'ENOTCONN'].includes(e.code ?? '') ? finish() : finish(e));
   });
 }
 async function clearStaleSocket(path: string): Promise<void> {

@@ -65,3 +65,12 @@ Branch: `feat/multi-client-extend` (local), base `a4da2ca` = tag `v0.1.0-prototy
   `remote`, server pid 686 and the user's relay processes untouched. Details in TESTING.md "Cleanup".
 - PLAN acceptance table: 13 of 14 checks ✅; #14 (two physical Macs, sidebar host visibility) remains manual.
 - Logins left in place on this computer (Vercel CLI, gh) so the user can continue; `vercel logout` / `gh auth logout` remove them.
+
+## 2026-11-08 00:30 UTC — Mac feedback round
+- User ran the branch on the work Mac: `extend remote --by 1h` worked on the real computer (API-confirmed, same session,
+  this agent uninterrupted). Host registration failed: the Mac's Rex (0.0.1793645657, built 2026-11-02) rejects socket-path
+  host endpoints with HTTP 400; Rex ≥ 0.1.0-preview.13 accepts them. Recorded as TESTING.md M1/M2.
+- Added `start --label` (sidebar name), endpoint-based recognition of renamed hosts, multi-endpoint shared hosts, and an
+  `outdated` registration result with an "update Rex" hint. Commits `5a63f9a`, `0fd36ed` (signed), CI green on the former.
+- CI flake on `0fd36ed` (pull_request run only): pre-existing `write ENOTCONN` in the helper crash-recovery test. Root
+  cause is the CLI's control probe not treating ENOTCONN as "helper gone" like ECONNRESET/EPIPE; fixed in `src/helper.ts`.
