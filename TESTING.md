@@ -98,7 +98,20 @@ process started earlier in the cloud block kept running. The monitor exited on i
   as new as preview.13; the launcher now reports this case as `outdated` with an "update Rex" hint and the paste fallback. ❌ until Rex is updated
 - The `outdated` message was confirmed on the Mac at `f65d684` (prints even while Rex is attached). Rex updates via the app's
   **Install Update** (Shift+Cmd+U) action; channel in Settings → Developer → App Version [doc].
-- Still open: sidebar refresh behaviour once a new enough Rex app is installed; two-Mac GUI flow.
+- **M3 — root cause and registration success (00:37 UTC):** updating the Rex app (CLI 0.0.1793981048, built 2026-11-06) was
+  not enough; the app's local server process (pid 32633) had been running since 2026-10-16 on 0.0.1792158932 and still
+  rejected socket hosts. After `rex server stop` (ends programs in local Mac sessions; the user accepted this) the server
+  autostarted on 0.0.1793981048 and `start remote --label "remote 1"` registered the host: `rex hosts --json` lists
+  `remote 1`, icon cloud, `added_from: Elisabeths-MacBook-Pro.local`, endpoint = this Mac's bridge socket. ✅ registration
+- **M4 — sidebar still does not show it (user report, no screenshot possible from this session):** after registration the
+  user saw no `remote 1` in the Rex sidebar. Not yet checked: Settings → Remote Hosts status, whether the app process itself
+  relaunched into the new build, and whether Cmd+Q/reopen changes it. Two dead globe-icon hosts named after old socket files
+  (`960b0fbbdd00d5a1.sock`, `sandbox-remote.sock`) appeared in the store at the same second, apparently the app syncing
+  earlier manual pastes; they can be removed with `rex hosts remove <label>`.
+- **M5 — Rex UI observation:** with the cloud host selected, "new session" and even "This Mac" opened Linux sessions on
+  the cloud computer (`uname -s` → Linux); the user needed Terminal.app for a Mac shell. Worth raising with Superlogical.
+- Still open: sidebar visibility of a registered host (M4); two-Mac GUI flow. Continue from a Claude Code session on the
+  Mac itself, where screenshots can be pasted.
 
 ## Manual acceptance on two physical Macs (pending — not verifiable from Linux)
 Prerequisites on **both** Macs: current Rex app in /Applications with `rex` on PATH, Node 22+, this branch installed (`npm install --global <tarball>` or `npm link` from the checkout), same Vercel user. Use `--team team_TtmJZYmD3tcLBLqWOhoVawd1 --project prj_IbmALXBur5uokFthCQ1j1hUkJrW8` on first `setup` if the Mac is not already configured for the `remote` computer.

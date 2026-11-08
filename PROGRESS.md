@@ -74,3 +74,13 @@ Branch: `feat/multi-client-extend` (local), base `a4da2ca` = tag `v0.1.0-prototy
   `outdated` registration result with an "update Rex" hint. Commits `5a63f9a`, `0fd36ed` (signed), CI green on the former.
 - CI flake on `0fd36ed` (pull_request run only): pre-existing `write ENOTCONN` in the helper crash-recovery test. Root
   cause is the CLI's control probe not treating ENOTCONN as "helper gone" like ECONNRESET/EPIPE; fixed in `src/helper.ts`.
+
+## 2026-11-08 00:50 UTC — Handoff to a local Mac session
+- Host registration works on the Mac once its Rex server runs a current build (TESTING.md M3). The sidebar still does not
+  show the host (M4); debugging needs screenshots, which cannot cross the Rex bridge into this cloud session.
+- `outdated` message reworded: the cause is the Mac's Rex *server* still running an old build; fix is `rex server stop`
+  (ends local Mac programs) after updating the app.
+- Open for the Mac session: M4 (Settings → Remote Hosts status; app process version; Cmd+Q/reopen), M5, remove the two
+  dead globe hosts, then the two-Mac flow. Branch head after this commit is the checkpoint.
+- Idea, not built: `rex-cloud send <name> <file>` to copy a Mac file (e.g. a screenshot) into the cloud computer via the
+  Sandbox writeFiles API, so an agent running there can read it.

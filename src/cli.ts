@@ -186,12 +186,12 @@ async function main() {
       if (resumed) print('Files restored. Terminals start as fresh shells.');
       if (connected) {
         print(`Select ${hostLabel} in Rex to continue.`);
-        if (host === 'outdated') print(`Your Rex app is older than the version that lists socket hosts in the sidebar, so ${hostLabel} was not added as a host. Update Rex and run rex-cloud start ${target} again; until then connect via Add Remote Host with:\n\n${paths.socket}\n`);
+        if (host === 'outdated') print(`Your Mac's Rex server is running a build that does not accept socket hosts, so ${hostLabel} was not added to the sidebar. Check that Rex is up to date, then relaunch its server with rex server stop (this ends programs running in your local Mac sessions; the cloud computer is unaffected) and run rex-cloud start ${target} again. Until then connect via Add Remote Host with:\n\n${paths.socket}\n`);
         else if (host === 'conflict') print(`A different host is already named ${hostLabel} in Rex, so it was left unchanged. Pick another sidebar name with --label.`);
       }
       else if (['added', 'updated', 'current'].includes(host)) print(`In Rex, select the ${hostLabel} host in the sidebar, then its bash terminal.${host === 'current' && hostLabel !== name ? ` (It may still carry the name you gave it in Rex.)` : ''}\nIf it is not listed, choose Add Remote Host and paste:\n\n${paths.socket}\n`);
       else {
-        if (host === 'outdated') print(`Your Rex app is older than the version that lists socket hosts in the sidebar, so ${hostLabel} could not be added automatically. Update Rex, then run rex-cloud start ${target} again.`);
+        if (host === 'outdated') print(`Your Mac's Rex server is running a build that does not accept socket hosts, so ${hostLabel} could not be added to the sidebar. Check that Rex is up to date, then relaunch its server with rex server stop (this ends programs running in your local Mac sessions; the cloud computer is unaffected) and run rex-cloud start ${target} again.`);
         print(`Connect once on this Mac:\n  1. In ${app.path}, choose Add Remote Host.\n  2. Paste this path and select the Connect to… result:\n\n${paths.socket}\n\n  3. Select ${hostLabel}, then its bash terminal.${host === 'conflict' ? `\nA different host is already named ${hostLabel} in Rex, so it was left unchanged. Pick another sidebar name with --label.` : host === 'outdated' ? '' : '\nIf Rex rejects the path, check that you opened the Applications copy.'}`);
       }
       print(`Stops: ${stopTime(data.expiresAt)}`);
