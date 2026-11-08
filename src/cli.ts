@@ -184,7 +184,11 @@ async function main() {
       const connected = await attached(paths.socket);
       print(`\n${name} ${resumed ? 'resumed' : 'is ready'}.`);
       if (resumed) print('Files restored. Terminals start as fresh shells.');
-      if (connected) print(`Select ${hostLabel} in Rex to continue.`);
+      if (connected) {
+        print(`Select ${hostLabel} in Rex to continue.`);
+        if (host === 'outdated') print(`Your Rex app is older than the version that lists socket hosts in the sidebar, so ${hostLabel} was not added as a host. Update Rex and run rex-cloud start ${target} again; until then connect via Add Remote Host with:\n\n${paths.socket}\n`);
+        else if (host === 'conflict') print(`A different host is already named ${hostLabel} in Rex, so it was left unchanged. Pick another sidebar name with --label.`);
+      }
       else if (['added', 'updated', 'current'].includes(host)) print(`In Rex, select the ${hostLabel} host in the sidebar, then its bash terminal.${host === 'current' && hostLabel !== name ? ` (It may still carry the name you gave it in Rex.)` : ''}\nIf it is not listed, choose Add Remote Host and paste:\n\n${paths.socket}\n`);
       else {
         if (host === 'outdated') print(`Your Rex app is older than the version that lists socket hosts in the sidebar, so ${hostLabel} could not be added automatically. Update Rex, then run rex-cloud start ${target} again.`);
