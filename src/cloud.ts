@@ -10,7 +10,7 @@ export const OWNER = 'rex-cloud-prototype-v1';
 export interface Backend {
   get: typeof Sandbox.get; create: typeof Sandbox.create;
 }
-const SANDBOX_REGIONS = ['iad1', 'sfo1', 'cle1', 'cdg1', 'fra1', 'arn1', 'sin1', 'pdx1', 'lhr1', 'icn1', 'bom1', 'cpt1', 'dub1', 'gru1', 'hkg1', 'syd1', 'yul1', 'hnd1', 'kix1'];
+export const SANDBOX_REGIONS = ['iad1', 'sfo1', 'cle1', 'cdg1', 'fra1', 'arn1', 'sin1', 'pdx1', 'lhr1', 'icn1', 'bom1', 'cpt1', 'dub1', 'gru1', 'hkg1', 'syd1', 'yul1', 'hnd1', 'kix1'];
 /** The Vercel edge region serving this machine (`x-vercel-id: sfo1::…`), or undefined to use the Sandbox default. */
 export async function nearestRegion(): Promise<SandboxRegion | undefined> {
   try {
@@ -18,6 +18,20 @@ export async function nearestRegion(): Promise<SandboxRegion | undefined> {
     const region = res.headers.get('x-vercel-id')?.split('::')[0]?.trim().toLowerCase();
     return region && SANDBOX_REGIONS.includes(region) ? region : undefined;
   } catch { return undefined; }
+}
+async function projectSetsSandboxRegion({ teamId, projectId, token }: { teamId: string; projectId: string; token: string }): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}?teamId=${encodeURIComponent(teamId)}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5000) });
+    // When the project can't be read, assume it has a default so a data-residency choice is never overridden.
+    if (!res.ok) return true;
+    const project = await res.json() as { sandbox?: { region?: string | null } };
+    return Boolean(project.sandbox?.region);
+  } catch { return true; }
+}
+/** The region to request for a new computer: the nearest one, unless the project sets its own default sandbox region (then undefined, so Sandbox applies it). */
+export async function newComputerRegion(auth: { teamId: string; projectId: string; token: string }): Promise<SandboxRegion | undefined> {
+  const [projectHasRegion, nearest] = await Promise.all([projectSetsSandboxRegion(auth), nearestRegion()]);
+  return projectHasRegion ? undefined : nearest;
 }
 export function apiCode(e: unknown): string | undefined {
   const value = e as { json?: { error?: { code?: string }; code?: string } };
@@ -57,7 +71,7 @@ export async function deleteComputer(scope: Scope & Partial<Identity>, name: str
   await s.delete({ deleteOrphanSnapshots: true });
   return { found: true as const, cloudName: cloud, snapshots: 'deleting' as const };
 }
-export async function ensureComputer(scope: Identity, name: string, opts: { create: boolean; image?: string; timeout: number | (() => Promise<number>); onProgress?: (action: 'creating' | 'resuming' | 'connecting') => void }, backend: Backend = Sandbox) {
+export async function ensureComputer(scope: Identity, name: string, opts: { create: boolean; image?: string; region?: SandboxRegion; timeout: number | (() => Promise<number>); onProgress?: (action: 'creating' | 'resuming' | 'connecting') => void }, backend: Backend = Sandbox) {
   const auth = await credentials(scope), computerName = cloudName(scope, name);
   const timeout = () => typeof opts.timeout === 'function' ? opts.timeout() : Promise.resolve(opts.timeout);
   let s: Sandbox, created = false, resumed = false;
@@ -66,7 +80,7 @@ export async function ensureComputer(scope: Identity, name: string, opts: { crea
     if (apiCode(e) !== 'not_found' || !opts.create) throw e;
     try {
       opts.onProgress?.('creating');
-      s = await backend.create({ ...auth, name: computerName, region: await nearestRegion(), image: opts.image ?? DEFAULT_IMAGE, timeout: await timeout(), resources: { vcpus: 2 }, tags: { launcher: OWNER, owner: scope.userId, sharing: scope.shared ? 'team' : 'personal', image: opts.image ?? DEFAULT_IMAGE }, persistent: true, keepLastSnapshots: { count: 1 } });
+      s = await backend.create({ ...auth, name: computerName, region: opts.region ?? await newComputerRegion(auth), image: opts.image ?? DEFAULT_IMAGE, timeout: await timeout(), resources: { vcpus: 2 }, tags: { launcher: OWNER, owner: scope.userId, sharing: scope.shared ? 'team' : 'personal', image: opts.image ?? DEFAULT_IMAGE }, persistent: true, keepLastSnapshots: { count: 1 } });
       created = true;
     } catch (error) {
       if (!(error instanceof APIError && error.response.status === 409)) throw error;
@@ -75,6 +89,7 @@ export async function ensureComputer(scope: Identity, name: string, opts: { crea
   }
   assertOwned(s, scope);
   if (opts.image && s.tags?.image !== opts.image) throw new Error('That computer already uses another image. Choose a new computer name to use this image.');
+  if (opts.region && s.region !== opts.region) throw new Error(`That computer runs in ${s.region}. Choose a new computer name to use ${opts.region}.`);
   if (!created && (!scope.shared || s.tags?.sharing === 'team') && (s.keepLastSnapshots?.count !== 1 || s.keepLastSnapshots.deleteEvicted === false)) await s.update({ keepLastSnapshots: { count: 1 } });
   if (s.status !== 'running') {
     if (!['stopped', 'failed', 'aborted'].includes(s.status)) throw new Error(`Computer is ${s.status}. Wait, then run open again.`);

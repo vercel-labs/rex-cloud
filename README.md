@@ -37,7 +37,7 @@ The socket path stays the same for that computer, including after `stop`, `start
 
 ### What's in the computer
 
-Each computer is a Linux virtual machine with 2 vCPUs and 4 GB of memory, created from the `vercel/sandbox/universal` image. New computers include Node.js, Git, and the Claude Code and Codex CLIs. Its disk persists: `stop` saves it and `start` boots from it. A new computer is created in the Vercel region nearest to your Mac (falling back to `iad1`) and stays in that region for its lifetime.
+Each computer is a Linux virtual machine with 2 vCPUs and 4 GB of memory, created from the `vercel/sandbox/universal` image. New computers include Node.js, Git, and the Claude Code and Codex CLIs. Its disk persists: `stop` saves it and `start` boots from it. A new computer stays in the region it was created in. See [Choose a region](#choose-a-region).
 
 Your cloud shell shows a prompt such as `sandbox:remote ~ $`. Clone a repository, install your tools, and sign into your coding agent there. Coding agents aren't signed in on a new computer. Your Mac's files and running sessions stay on your Mac.
 
@@ -155,6 +155,17 @@ rex-cloud start remote --timeout 45m --json
 ```
 
 `--state-dir PATH` keeps a separate local configuration. Reuse that path when reconnecting. Normal use does not need this option.
+
+## Choose a region
+
+A new computer runs in the first of these that applies:
+
+1. `--region`, for example `rex-cloud start research --region fra1`.
+2. The Vercel project's [default sandbox region](https://vercel.com/docs/sandbox/concepts/regions#set-a-default-region-for-your-project), for example one set for data residency.
+3. The Vercel region nearest to your Mac.
+4. `iad1`, when the nearest region can't be determined.
+
+A computer can't change regions because its saved disk stays in the region it was created in. To use another region, choose a new computer name.
 
 ## Choose a custom image
 
