@@ -1,6 +1,6 @@
 # Rex cloud
 
-Run a Linux cloud terminal in Rex, backed by Vercel Sandbox. Give your computer a name, work in its Rex terminal, and use the same command to return later.
+Get a Linux computer in the cloud, backed by Vercel Sandbox, and work in it from Rex. You or your coding agent create it with one command, give it a name, and return to it by that name later. An agent in a local Rex terminal can start several computers and run work in each one.
 
 **Experimental preview.** One-time host setup in Rex is required. See [preview limits](#preview-limits) before relying on it for ongoing work.
 
@@ -22,16 +22,24 @@ rex-cloud start remote
 
 The launcher reuses your Vercel login or opens browser sign-in. It uses your linked project or current Vercel CLI team when available. Otherwise, it asks you to choose a team and finds or creates a `rex-cloud` project to track Sandbox usage. It asks how long the computer should run, then starts it and opens Rex.
 
-The launcher registers the computer as a Rex host named **remote** (`rex hosts add`). To use a different name, pass `--label "remote 1"` to `start`. The current Rex app shows only hosts added in the app, so add each new computer once on each Mac:
+### Show the computer in Rex's sidebar
+
+The launcher registers the computer as a Rex host named **remote** (`rex hosts add`). To use a different name, pass `--label "remote 1"` to `start`. Agents can use the computer through that host right away; see [Work from an agent](#work-from-an-agent).
+
+To see the computer in your sidebar, add it once in the Rex app on each Mac. The current app shows only hosts added in its settings, not hosts registered from the command line:
 
 1. In Rex, open **Settings → Remote Hosts** and choose **Add Remote Host…**.
 2. Paste the socket path printed by the launcher as the **Host URL**, and enter **remote** as the **Host name**.
    The **Add Remote Host** button in the sidebar also connects, but names the host after the socket file.
 3. Select **remote**, then its terminal in the sidebar.
 
-The socket path stays the same for that computer, including after `stop`, `start` and `restart`, so you only add it once. New sessions and tabs created on the computer, by you or an agent, appear under its host automatically.
+The socket path stays the same for that computer, including after `stop`, `start` and `restart`, so you only add it once. After that, sessions and tabs created on the computer, by you or an agent, appear under its host automatically.
 
-Your cloud shell shows a prompt such as `sandbox:remote ~ $`. Run `uname -s` there to see `Linux`. Clone a repository, install your tools, and sign into your coding agent inside that terminal. Your Mac's files and running sessions stay on your Mac.
+### What's in the computer
+
+Each computer is a Linux virtual machine with 2 vCPUs and 4 GB of memory, created from the `vercel/sandbox/universal` image. New computers include Node.js, Git, and the Claude Code and Codex CLIs. Its disk persists: `stop` saves it and `start` boots from it.
+
+Your cloud shell shows a prompt such as `sandbox:remote ~ $`. Clone a repository, install your tools, and sign into your coding agent there. Coding agents aren't signed in on a new computer. Your Mac's files and running sessions stay on your Mac.
 
 ### Run without a global install
 
@@ -103,11 +111,23 @@ rex-cloud extend remote --by 2h  # adds two hours without a prompt
 | `rex-cloud restart remote` | Restart as fresh shells | Kept | Something in the computer is stuck and you want to keep its files |
 | `rex-cloud delete remote --yes` | End | **Removed permanently**, including snapshots | The work is finished and you want the name and storage back |
 
+Rex sessions and tabs on the computer come back after `restart`, and after `stop` and `start`, as fresh shells: the layout stays, running programs and scrollback don't. To restart one session without restarting the computer, close it in Rex and open a new one. An agent can do the same with `rex -S remote kill <session>` and `rex -S remote new <name>`.
+
 `delete` also stops this Mac's connection helper, removes the host rex-cloud registered and clears its local records. The Rex app keeps the entry you added in **Settings → Remote Hosts**, so remove it there too. Without `--yes` it only explains what would be removed. After a delete, `rex-cloud start remote` creates a new, empty computer.
 
 ## Work from an agent
 
-An agent in a local Rex terminal can run every command in this README. Add `--json` for machine-readable output. To run commands and copy files inside a computer without opening a terminal, combine `status --json` with the [Sandbox CLI](https://vercel.com/docs/sandbox/cli-reference):
+An agent in a local Rex terminal can run every command in this README. Add `--json` for machine-readable output. Adding the computer to Rex's sidebar isn't required for the agent; it's only for you to see the work.
+
+To open terminals on a computer, use its Rex host. They appear in your sidebar once you've added the host:
+
+```sh
+rex -S remote new build --json                                            # create a session
+rex -S remote window new -s <session> tests --keep-open --json -- npm test  # run a command in a new tab
+rex -S remote capture -s <session> -b <block> --trim                      # read its output
+```
+
+To run commands and copy files without a terminal, combine `status --json` with the [Sandbox CLI](https://vercel.com/docs/sandbox/cli-reference):
 
 ```sh
 rex-cloud status remote --json   # includes "sandbox", "teamId" and "projectId"
