@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { checkFile } from './state.js';
 
 const exec = promisify(execFile);
 export interface RexApp { path: string; build: number }
@@ -50,9 +51,87 @@ export async function attached(socket: string): Promise<boolean | undefined> {
     return data.clients.some((c: { info?: { kind?: string }; connection_state?: string }) => c.info?.kind === 'app' && c.connection_state === 'connected');
   } catch { return; }
 }
+export const CLOUD_SOCKET = /^unix:\/\/\/tmp\/rex-cloud-\d+-[a-f0-9]{16}\//;
+export interface HostEntry { host: { label: string; endpoints: string[]; icon?: string }; from: string; held: boolean }
+export type HostRegistration = 'added' | 'updated' | 'current' | 'conflict' | 'unsupported' | 'outdated';
+/**
+ * Observed 2026-11-08 on a Mac running Rex 0.0.1793645657 (built 2026-11-02): the app's server answers `hosts add` with
+ * `hosts.put … "unix:///…" is a local socket, which other machines cannot reach (status=400 code=bad_request)` and the CLI
+ * adds "this machine probably runs an older version of Rex, which does not accept a socket path as an endpoint".
+ * Rex 0.1.0-preview.13 (built 2026-11-03) accepts socket-path hosts.
+ */
+export function rejectsSocketHosts(error: unknown): boolean {
+  const text = [(error as { stderr?: string })?.stderr, (error as Error)?.message].filter(Boolean).join('\n');
+  return /is a local socket|does not accept a socket path/i.test(text);
+}
+/**
+ * Register the computer as a Rex host, so it appears in Rex by label instead of a pasted socket path.
+ * Rex stores hosts in the user's home server and shows them on every device that follows that home, and a device skips
+ * socket endpoints whose path does not exist on it. So one host carries one socket endpoint per Mac, and a host that
+ * already lists this Mac's socket is current whatever it is called (a rename in Rex sticks). Only hosts whose endpoints
+ * are all rex-cloud sockets are ever changed, nothing is removed, and failures never block the connection.
+ */
+export async function registerHost(name: string, socket: string,
+  run: (args: string[]) => Promise<string> = async args => (await exec('rex', ['--autostart=false', '--timeout', '5s', ...args], { timeout: 10000, maxBuffer: 1024 * 1024 })).stdout,
+  live: (path: string) => Promise<boolean> = path => checkFile(path, true).catch(() => true),
+  label: string = name,
+): Promise<HostRegistration> {
+  const endpoint = `unix://${socket}`;
+  let hosts: HostEntry[];
+  try {
+    const data = JSON.parse(await run(['hosts', '--json'])) as { hosts?: HostEntry[] };
+    if (!Array.isArray(data.hosts)) return 'unsupported';
+    hosts = data.hosts;
+  } catch { return 'unsupported'; }
+  if (hosts.some(h => h.host?.endpoints?.includes(endpoint))) return 'current';
+  const existing = hosts.find(h => h.host?.label?.toLowerCase() === label.toLowerCase());
+  if (existing) {
+    const endpoints = existing.host.endpoints ?? [];
+    if (!endpoints.every(e => CLOUD_SOCKET.test(e))) return 'conflict';
+    // A socket that still exists on this Mac belongs to another live bridge with the same label (another account,
+    // --shared, or --state-dir), so it is left alone rather than silently repointed. Sockets that do not exist here are
+    // other devices' bridges or stale paths; both are kept, because Rex skips paths that do not exist on a device.
+    for (const e of endpoints) if (await live(e.slice('unix://'.length))) return 'conflict';
+    try { await run(['hosts', 'edit', existing.host.label, ...endpoints.flatMap(e => ['--endpoint', e]), '--endpoint', endpoint]); return 'updated'; } catch (e) { return rejectsSocketHosts(e) ? 'outdated' : 'unsupported'; }
+  }
+  try { await run(['hosts', 'add', label, endpoint, '--icon', 'cloud']); return 'added'; } catch (e) { return rejectsSocketHosts(e) ? 'outdated' : 'unsupported'; }
+}
+export type HostRemoval = 'removed' | 'edited' | 'none' | 'unsupported';
+/**
+ * Remove this Mac's socket from the Rex hosts that list it, for delete. A host whose only endpoint is this socket is
+ * removed; a host that also lists other devices' sockets keeps them. Hosts with any non-rex-cloud endpoint are never
+ * changed. A Rex app that holds its own entry for the socket (an earlier Add Remote Host paste) re-adds it, so that
+ * entry has to be removed in the app's Settings → Remote Hosts.
+ */
+export async function unregisterHost(socket: string,
+  run: (args: string[]) => Promise<string> = async args => (await exec('rex', ['--autostart=false', '--timeout', '5s', ...args], { timeout: 10000, maxBuffer: 1024 * 1024 })).stdout,
+): Promise<HostRemoval> {
+  const endpoint = `unix://${socket}`;
+  let hosts: HostEntry[];
+  try {
+    const data = JSON.parse(await run(['hosts', '--json'])) as { hosts?: HostEntry[] };
+    if (!Array.isArray(data.hosts)) return 'unsupported';
+    hosts = data.hosts;
+  } catch { return 'unsupported'; }
+  let result: HostRemoval = 'none';
+  for (const h of hosts) {
+    const endpoints = h.host?.endpoints ?? [];
+    if (!endpoints.includes(endpoint) || !endpoints.every(e => CLOUD_SOCKET.test(e))) continue;
+    const rest = endpoints.filter(e => e !== endpoint);
+    try {
+      if (rest.length) { await run(['hosts', 'edit', h.host.label, ...rest.flatMap(e => ['--endpoint', e])]); if (result === 'none') result = 'edited'; }
+      else { await run(['hosts', 'remove', h.host.label]); result = 'removed'; }
+    } catch { return 'unsupported'; }
+  }
+  return result;
+}
+export function label(ms: number): string {
+  const minutes = Math.round(ms / 60000), hours = Math.floor(minutes / 60), rest = minutes % 60;
+  return hours && rest ? `${hours}h ${rest}m` : hours ? `${hours}h` : `${rest}m`;
+}
 export function stopTime(iso?: string, now = Date.now()): string {
   if (!iso) return 'not running';
   const date = new Date(iso);
   if (!Number.isFinite(date.getTime())) return 'unknown; run rex-cloud status';
-  return `${date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })} (${Math.max(0, Math.ceil((date.getTime() - now) / 60000))} min remaining)`;
+  return `${date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })} (${label(Math.max(0, date.getTime() - now))} remaining)`;
 }

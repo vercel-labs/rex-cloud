@@ -1,5 +1,5 @@
-import { createInterface } from 'node:readline/promises';
 import { token } from './auth.js';
+import { Prompt } from './prompt.js';
 import { duration } from './state.js';
 
 export async function teamLimit(teamId: string, request: typeof fetch = fetch): Promise<number> {
@@ -20,13 +20,13 @@ export async function chooseLifetime(teamId: string, explicit: string | undefine
     if (duration(chosen) > limit) throw new Error('That duration exceeds your team plan limit. Hobby supports up to 45m; Pro and Enterprise up to 24h.');
     return chosen;
   }
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  const prompt = new Prompt();
   process.stderr.write(`\nHow long should it run? (max ${limit === duration('45m') ? '45m' : '24h'})\nKeeps running when you close your laptop.\n`);
   try {
     while (true) {
-      const answer = (await rl.question('Duration (m = minutes, h = hours): ')).trim();
+      const answer = await prompt.ask('Duration (m = minutes, h = hours): ');
       try { if (duration(answer) <= limit) return answer; } catch {}
       process.stderr.write('Enter a duration with m for minutes or h for hours, within your plan limit.\n');
     }
-  } finally { rl.close(); }
+  } finally { prompt.close(); }
 }
