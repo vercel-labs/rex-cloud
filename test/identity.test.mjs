@@ -26,7 +26,8 @@ test('identity comes from authenticated API and owner mismatches cannot mutate r
     assert.deepEqual(mutations, []);
   } finally { if (prior === undefined) delete process.env.VERCEL_TOKEN; else process.env.VERCEL_TOKEN = prior; }
 });
-test('snapshot retention applies at creation and to an existing owned computer', async () => {
+test('snapshot retention applies at creation and to an existing owned computer', async t => {
+  t.mock.method(globalThis, 'fetch', async () => new Response(null, { headers: { 'x-vercel-id': 'iad1::fixture' } }));
   const prior = process.env.VERCEL_TOKEN; process.env.VERCEL_TOKEN = 'fixture';
   try {
     const updates = [];

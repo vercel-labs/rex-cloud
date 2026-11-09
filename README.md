@@ -37,7 +37,7 @@ The socket path stays the same for that computer, including after `stop`, `start
 
 ### What's in the computer
 
-Each computer is a Linux virtual machine with 2 vCPUs and 4 GB of memory, created from the `vercel/sandbox/universal` image. New computers include Node.js, Git, and the Claude Code and Codex CLIs. Its disk persists: `stop` saves it and `start` boots from it.
+Each computer is a Linux virtual machine with 2 vCPUs and 4 GB of memory, created from the `vercel/sandbox/universal` image. New computers include Node.js, Git, and the Claude Code and Codex CLIs. Its disk persists: `stop` saves it and `start` boots from it. A new computer is created in the Vercel region nearest to your Mac (falling back to `iad1`) and stays in that region for its lifetime.
 
 Your cloud shell shows a prompt such as `sandbox:remote ~ $`. Clone a repository, install your tools, and sign into your coding agent there. Coding agents aren't signed in on a new computer. Your Mac's files and running sessions stay on your Mac.
 
