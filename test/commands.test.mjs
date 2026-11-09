@@ -12,7 +12,7 @@ test('npx recovery commands remain runnable without a global install and preserv
 });
 
 test('GitHub release recovery commands retain the download URL across directories', () => {
-  const url = 'https://github.com/vercel-labs/rex-cloud/releases/download/v0.1.0-prototype.3/vercel-labs-rex-cloud-0.1.0-prototype.3.tgz';
+  const url = 'https://github.com/vercel-labs/rex-cloud/releases/download/v0.1.0-prototype.4/vercel-labs-rex-cloud-0.1.0-prototype.4.tgz';
   const text = 'Reconnect: rex-cloud start remote';
   assert.equal(commandHint(text, { npm_command: 'exec', npm_config_package: url }, '/tmp/another-directory'), `Reconnect: npx --yes --package '${url}' rex-cloud start remote`);
   assert.equal(commandHint(text, { npm_command: 'exec', npm_config_package: 'https://other.example/vercel-labs-rex-cloud-0.1.tgz' }), text);
