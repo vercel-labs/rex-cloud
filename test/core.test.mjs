@@ -4,7 +4,7 @@ import { mkdtemp, chmod, mkdir, symlink, stat, readFile, rm } from 'node:fs/prom
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { duration, validateName, validateScope, locations, privateDir, writeJSON, readJSON, withLock } from '../dist/state.js';
-import { APIError, ensureComputer, OWNER, friendlyError } from '../dist/cloud.js';
+import { APIError, ensureComputer, nearestRegion, newComputerRegion, OWNER, friendlyError } from '../dist/cloud.js';
 import { Handshake, MARKER } from '../dist/bridge.js';
 
 const scope = { teamId: 'team_fixture', projectId: 'prj_fixture', userId: 'user_fixture', shared: false };
@@ -43,7 +43,11 @@ function error(code, status = 404) { return new APIError(new Response('', { stat
 function computer(status = 'running', image = 'vercel/sandbox/universal') {
   return { status, tags: { launcher: OWNER, image, owner: scope.userId, sharing: 'personal' }, update: async () => {} };
 }
-test('lifecycle creates only on confirmed not_found and never silently replaces missing snapshots', async () => {
+function vercelFetch({ edge = 'sfo1::iad1::fixture', project = Response.json({}) } = {}) {
+  return async url => String(url).startsWith('https://api.vercel.com/v9/projects/') ? project.clone() : new Response(null, { headers: { 'x-vercel-id': edge } });
+}
+test('lifecycle creates only on confirmed not_found and never silently replaces missing snapshots', async t => {
+  t.mock.method(globalThis, 'fetch', vercelFetch());
   const previous = process.env.VERCEL_TOKEN; process.env.VERCEL_TOKEN = 'test-only';
   try {
     for (const err of [error('snapshot_not_found'), error('forbidden', 403), new Error('network')]) {
@@ -54,10 +58,11 @@ test('lifecycle creates only on confirmed not_found and never silently replaces 
     let created;
     const result = await ensureComputer(scope, 'dev', { create: true, timeout: 2700000 }, { get: async () => { throw error('not_found'); }, create: async args => { created = args; return computer(); } });
     assert.equal(result.created, true); assert.match(created.name, /^rex-cloud-[a-f0-9]{16}-dev$/); assert.equal(created.persistent, true);
-    assert.equal(created.image, 'vercel/sandbox/universal');
+    assert.equal(created.image, 'vercel/sandbox/universal'); assert.equal(created.region, 'sfo1');
   } finally { if (previous === undefined) delete process.env.VERCEL_TOKEN; else process.env.VERCEL_TOKEN = previous; }
 });
-test('open does not create, image mismatch and unowned computers are preserved, create races re-read', async () => {
+test('open does not create, image mismatch and unowned computers are preserved, create races re-read', async t => {
+  t.mock.method(globalThis, 'fetch', vercelFetch());
   const previous = process.env.VERCEL_TOKEN; process.env.VERCEL_TOKEN = 'test-only';
   try {
     await assert.rejects(ensureComputer(scope, 'dev', { create: false, timeout: 2700000 }, { get: async () => { throw error('not_found'); }, create: async () => assert.fail('must not create') }));
@@ -66,6 +71,41 @@ test('open does not create, image mismatch and unowned computers are preserved, 
     let gets = 0;
     const result = await ensureComputer(scope, 'dev', { create: true, timeout: 2700000 }, { get: async () => { if (++gets === 1) throw error('not_found'); return computer(); }, create: async () => { throw error('conflict', 409); } });
     assert.equal(result.created, false); assert.equal(gets, 2);
+  } finally { if (previous === undefined) delete process.env.VERCEL_TOKEN; else process.env.VERCEL_TOKEN = previous; }
+});
+test('nearest region comes from x-vercel-id and falls back to the Sandbox default when unknown or unreachable', async t => {
+  const headers = id => new Response(null, { headers: id ? { 'x-vercel-id': id } : {} });
+  for (const [response, expected] of [[headers(' HND1::iad1::abc'), 'hnd1'], [headers('bogus99::abc'), undefined], [headers(), undefined]]) {
+    t.mock.method(globalThis, 'fetch', async () => response);
+    assert.equal(await nearestRegion(), expected);
+    t.mock.restoreAll();
+  }
+  t.mock.method(globalThis, 'fetch', async () => { throw new Error('offline'); });
+  assert.equal(await nearestRegion(), undefined);
+});
+test('a project default sandbox region wins over the nearest region, including when the project cannot be read', async t => {
+  const auth = { teamId: 'team_fixture', projectId: 'prj_fixture', token: 'test-only' };
+  const cases = [
+    [Response.json({}), 'sfo1'],
+    [Response.json({ sandbox: { region: null, failoverRegions: [] } }), 'sfo1'],
+    [Response.json({ sandbox: { region: 'fra1' } }), undefined],
+    [new Response('', { status: 403 }), undefined],
+  ];
+  for (const [project, expected] of cases) {
+    t.mock.method(globalThis, 'fetch', vercelFetch({ project }));
+    assert.equal(await newComputerRegion(auth), expected);
+    t.mock.restoreAll();
+  }
+});
+test('an explicit region is used without detection, and an existing computer in another region is preserved', async t => {
+  t.mock.method(globalThis, 'fetch', async () => assert.fail('an explicit region must skip detection'));
+  const previous = process.env.VERCEL_TOKEN; process.env.VERCEL_TOKEN = 'test-only';
+  try {
+    let created;
+    await ensureComputer(scope, 'dev', { create: true, region: 'lhr1', timeout: 2700000 }, { get: async () => { throw error('not_found'); }, create: async args => { created = args; return { ...computer(), region: 'lhr1' }; } });
+    assert.equal(created.region, 'lhr1');
+    await assert.rejects(ensureComputer(scope, 'dev', { create: true, region: 'lhr1', timeout: 2700000 }, { get: async () => ({ ...computer(), region: 'iad1' }), create: async () => assert.fail() }), /runs in iad1/);
+    await ensureComputer(scope, 'dev', { create: true, region: 'lhr1', timeout: 2700000 }, { get: async () => ({ ...computer(), region: 'lhr1' }), create: async () => assert.fail() });
   } finally { if (previous === undefined) delete process.env.VERCEL_TOKEN; else process.env.VERCEL_TOKEN = previous; }
 });
 test('API failures do not expose credential-bearing response text', () => {

@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 import { unlink } from 'node:fs/promises';
 import { authenticate, login } from './auth.js';
-import { agentInfo, bootstrap, deleteComputer, ensureComputer, findComputer, friendlyError, summary } from './cloud.js';
+import { agentInfo, bootstrap, deleteComputer, ensureComputer, findComputer, friendlyError, SANDBOX_REGIONS, summary } from './cloud.js';
 import { control, disconnect, ensureHelper, saveAccount } from './helper.js';
 import { commandHint } from './commands.js';
 import { configure } from './setup.js';
@@ -20,7 +20,7 @@ const print = (message: string) => console.log(commandHint(message));
 const warn = (message: string) => console.error(commandHint(message));
 const HELP = `rex-cloud · cloud terminals for Rex (prototype)
 
-  rex-cloud start [name] [--timeout 45m] [--image VCR_REFERENCE] [--shared] [--label "remote 1"]
+  rex-cloud start [name] [--timeout 45m] [--image VCR_REFERENCE] [--region sfo1] [--shared] [--label "remote 1"]
   rex-cloud status [name]
   rex-cloud extend [name] [--by 2h]
   rex-cloud stop [name]
@@ -37,6 +37,7 @@ Without a project link, a rex-cloud project tracks Sandbox usage. Choose a team 
 start lists the computer as a host in Rex's sidebar; --label picks that sidebar name (default: the computer name).
 Renaming the host in Rex sticks. If it is not listed, add the printed socket via Add Remote Host.
 The cloud terminal starts fresh. Existing Mac sessions stay on your Mac.
+New computers run in --region, else the project's default sandbox region, else the region nearest you.
 Computers belong to your Vercel user by default. --shared explicitly joins a team computer.
 Use --shared with every command for shared computers, including earlier prototype computers.
 
@@ -69,7 +70,7 @@ async function main() {
   process.umask(0o077);
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     help: { type: 'boolean', short: 'h' }, json: { type: 'boolean' }, team: { type: 'string' }, project: { type: 'string' },
-    'state-dir': { type: 'string' }, image: { type: 'string' }, timeout: { type: 'string' }, 'no-open': { type: 'boolean' }, shared: { type: 'boolean' }, by: { type: 'string' }, label: { type: 'string' }, yes: { type: 'boolean' },
+    'state-dir': { type: 'string' }, image: { type: 'string' }, region: { type: 'string' }, timeout: { type: 'string' }, 'no-open': { type: 'boolean' }, shared: { type: 'boolean' }, by: { type: 'string' }, label: { type: 'string' }, yes: { type: 'boolean' },
   } });
   const command = positionals[0];
   if (values.help || !command) { print(HELP); return; }
@@ -82,6 +83,8 @@ async function main() {
   if (command === 'delete' && !values.yes) throw new Error(`delete permanently removes ${positionals[1] ?? 'dev'}: its files, saved disk (snapshots), this Mac's helper and its Rex host.${values.shared ? ' Other members of this project lose it too.' : ''} To keep the files and only stop compute, use rex-cloud stop. To confirm, add --yes.`);
   const starting = ['start', 'up', 'open', 'restart'].includes(command);
   if (values.image && !['start', 'up'].includes(command)) throw new Error('--image is available with start. Use a new computer name to change images.');
+  if (values.region && !['start', 'up'].includes(command)) throw new Error('--region is available with start. Use a new computer name to change regions.');
+  if (values.region && !SANDBOX_REGIONS.includes(values.region.toLowerCase())) throw new Error(`Unknown Sandbox region: ${values.region}. Choose one of ${SANDBOX_REGIONS.join(', ')}.`);
   if (values.timeout && !starting) throw new Error('--timeout is available with start, up, open and restart.');
   if (values.label !== undefined && !starting) throw new Error('--label is available with start, up, open and restart.');
   if (values.label !== undefined && !values.label.trim()) throw new Error('Give --label a name to show in Rex, for example --label "remote 1".');
@@ -200,7 +203,7 @@ async function main() {
     };
     interruptedComputer = target;
     const { sandbox: s, created, resumed } = await ensureComputer(scope, name, {
-      create: !['open', 'restart'].includes(command), image: values.image, timeout,
+      create: !['open', 'restart'].includes(command), image: values.image, region: values.region?.toLowerCase(), timeout,
       onProgress: action => log(action === 'creating' ? `Creating ${name}…` : action === 'resuming' ? `Waking ${name}…` : `Connecting to ${name}…`),
     });
     if (explicitTimeout) await writeJSON(preferencePath, { timeout: explicitTimeout });
