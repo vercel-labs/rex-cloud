@@ -1,6 +1,6 @@
 {
   "name": "@vercel-labs/rex-cloud",
-  "version": "0.1.0-prototype.3",
+  "version": "0.1.0-prototype.4",
   "type": "module",
   "description": "Cloud terminals for Rex on Vercel Sandbox",
   "bin": {

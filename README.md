@@ -11,7 +11,7 @@ You need macOS, Node.js 22 or later with npm, and a current [Rex](https://www.su
 Install the preview from its GitHub release:
 
 ```sh
-npm install --global https://github.com/vercel-labs/rex-cloud/releases/download/v0.1.0-prototype.3/vercel-labs-rex-cloud-0.1.0-prototype.3.tgz
+npm install --global https://github.com/vercel-labs/rex-cloud/releases/download/v0.1.0-prototype.4/vercel-labs-rex-cloud-0.1.0-prototype.4.tgz
 ```
 
 In a **local Mac terminal**, including a **This Mac** pane in Rex, run:
@@ -46,7 +46,7 @@ Your cloud shell shows a prompt such as `sandbox:remote ~ $`. Clone a repository
 Use this command every time instead:
 
 ```sh
-npx --yes --package https://github.com/vercel-labs/rex-cloud/releases/download/v0.1.0-prototype.3/vercel-labs-rex-cloud-0.1.0-prototype.3.tgz rex-cloud start remote
+npx --yes --package https://github.com/vercel-labs/rex-cloud/releases/download/v0.1.0-prototype.4/vercel-labs-rex-cloud-0.1.0-prototype.4.tgz rex-cloud start remote
 ```
 
 Both methods save the same setup. The package is not yet published to the npm registry, so `npx @vercel-labs/rex-cloud` is not available yet. The remaining examples use the installed `rex-cloud` command.
